@@ -12,9 +12,10 @@ const assert = require('assert');
 
 assert('WebAssembly' in global, 'WebAssembly global object not detected');
 
-function validateArgs(_, __, wasmFile, funcName, ...args) {
+function validateArgs(_, __, wasmFile, funcName, args) {
   assert(wasmFile && funcName, 'Usage: ./runwasm.js prog.wasm func INT_ARG...');
-  return [wasmFile, funcName, ...args];
+  const parsedArgs = args.split(' ').map(x => parseInt(x, 10));
+  return [wasmFile, funcName, ...parsedArgs];
 }
 
 function compileAndRun(argv) {

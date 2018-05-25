@@ -11,28 +11,38 @@ const fs = require('fs');
 const assert = require('assert');
 
 assert('WebAssembly' in global, 'WebAssembly global object not detected');
-assert(
-  process.argv.length >= 4,
-  'Usage: ./runwasm.js prog.wasm func INT_ARG...',
-);
 
-const [_, __, wasmFile, funcName, ...args] = process.argv;
-const bytes = fs.readFileSync(wasmFile);
+function validateArgs(_, __, wasmFile, funcName, ...args) {
+  assert(wasmFile && funcName, 'Usage: ./runwasm.js prog.wasm func INT_ARG...');
+  return [wasmFile, funcName, ...args];
+}
 
-WebAssembly.compile(bytes)
-  .then(
-    module =>
-      new WebAssembly.Instance(module, {
-        env: {
+function compileAndRun(argv) {
+  const [wasmFile, funcName, ...args] = validateArgs(...argv);
+  const bytes = fs.readFileSync(wasmFile);
+  return WebAssembly.compile(bytes)
+    .then(
+      module =>
+        new WebAssembly.Instance(module, {
           memory: new WebAssembly.Memory({ initial: 256 }),
           table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' }),
-        },
-      }),
-  )
-  .then(instance => {
-    const { exports } = instance;
-    assert(exports, 'no exports found');
-    assert(funcName in exports, `${funcName} not found in wasm exports`);
-    return exports[funcName](...args);
-  })
-  .then(console.log, console.error);
+        }),
+    )
+    .then(instance => {
+      const { exports } = instance;
+      assert(exports, 'no exports found');
+      assert(funcName in exports, `${funcName} not found in wasm exports`);
+      const result = exports[funcName](...args);
+      return { result, exports };
+    });
+}
+
+if (module.parent) {
+  // Module is being imported, rather than invoked standalone.
+  module.exports.default = compileAndRun;
+} else {
+  // Script is invoked from the terminal, compile and log result.
+  compileAndRun(process.argv)
+    .then(({ result }) => result)
+    .then(console.log, console.error);
+}

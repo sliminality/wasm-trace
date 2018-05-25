@@ -1,8 +1,8 @@
-FILE = test
+FILE = main
 MINFILE = $(FILE).min
 
 # wasm function name and arguments
-FUNCTION = call_multiple
+FUNCTION = double_subtract5_add1
 ARGS = 10
 
 # Compile `test.rs` and execute in Node.
@@ -35,4 +35,4 @@ wast:
 
 # Execute a `.wasm` file in Node.js.
 node:
-	node ./bin/runWasm.js $(FILE).wasm $(FUNCTION) $(ARGS)
+	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION) $(ARGS)

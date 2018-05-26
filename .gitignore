@@ -1,2 +1,3 @@
 test/**/*.wast
+test/**/*.wat
 test/**/*.wasm

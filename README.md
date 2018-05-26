@@ -12,7 +12,7 @@ The following programs must be installed to run the tests in `tests/`:
 unneeded exports, imports, and functions.
 - [Binaryen](https://github.com/WebAssembly/binaryen/), a compiler
 toolchain for WebAssembly. In particular, we're using the `wasm-dis`
-tool to disassemble a `.wasm` binary into the readable `.wast` S-expression format.
+tool to disassemble a `.wasm` binary into the readable `.wat` S-expression format.
 - [Node.js](https://nodejs.org/) with WebAssembly support.
 
 ## Team

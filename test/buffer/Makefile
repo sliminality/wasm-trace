@@ -9,11 +9,11 @@ ARGS = "2 1000"
 all:
 	make build
 	make gc
-	make wast
+	make wat
 	make node
 
 clean:
-	rm *.wasm *.wast
+	rm *.wasm *.wat
 
 # Compile `.rs` to `.wasm` with minimal optimization.
 build:
@@ -26,12 +26,12 @@ build:
 gc:
 	wasm-gc $(FILE).wasm -o $(FILE).min.wasm
 
-# Disassemble `.wasm` into `.wast` S-expressions.
+# Disassemble `.wasm` into `.wat` S-expressions.
 # Requires [Binaryen](https://github.com/WebAssembly/binaryen/) .
 # Highly recommended to run `make gc` first, otherwise the resulting
-# `.wast` is huge..
-wast:
-	wasm-dis $(MINFILE).wasm -o $(MINFILE).wast
+# `.wat` is huge..
+wat:
+	wasm-dis $(MINFILE).wasm -o $(MINFILE).wat
 
 # Execute a `.wasm` file in Node.js.
 node:

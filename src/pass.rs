@@ -1,4 +1,29 @@
 /// Interfacing with WASM.
+
+use std::path::Path;
+use parity_wasm::elements::*;
+
+pub struct WasmModule(Module);
+
+impl WasmModule {
+    pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
+        let module = deserialize_file(path)?;
+        Ok(WasmModule(module))
+    }
+
+    pub fn print_instructions(&self) {
+        let bodies = self.0.code_section().unwrap().bodies();
+
+        for (i, body) in bodies.iter().enumerate() {
+            println!("Function index: {}", i);
+            let instructions = body.code().elements();
+            for instruction in instructions.iter() {
+                println!("\t{:?}", instruction);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use parity_wasm::elements::*;

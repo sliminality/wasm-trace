@@ -5,13 +5,13 @@ mod test {
 
     #[test]
     fn count_functions() {
-        let module = parity_wasm::deserialize_file("./test/simple/function-names.wasm").unwrap();
+        let module = parity_wasm::deserialize_file("./test/function-names.wasm").unwrap();
         assert_eq!(module.functions_space(), 4);
     }
 
     #[test]
     fn list_instructions() {
-        let module = parity_wasm::deserialize_file("./test/simple/function-names.wasm").unwrap();
+        let module = parity_wasm::deserialize_file("./test/function-names.wasm").unwrap();
         let expected = [vec![Instruction::GetLocal(1),
                              Instruction::GetLocal(0),
                              Instruction::I32Add,

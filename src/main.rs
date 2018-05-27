@@ -18,6 +18,7 @@ fn main() {
             }
 
             module.add_prelude_instruction(Instruction::GetLocal(0));
+            module.add_epilogue_instruction(Instruction::GetLocal(0));
 
             println!("\n------------------\nModified Functions\n-------------------");
             for f in module.functions() {

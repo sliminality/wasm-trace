@@ -119,6 +119,7 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
     
+    // TODO: write tests
     pub fn add_prelude_instruction(&mut self, inst: Instruction) {
         let bodies = self.module.code_section_mut().unwrap().bodies_mut();
 
@@ -126,7 +127,20 @@ impl WasmModule {
             let insts = body.code_mut().elements_mut();
             insts.insert(0, inst.clone());
         }
-    }    
+    }
+    
+    // TODO: write tests
+    pub fn add_epilogue_instruction(&mut self, inst: Instruction) {
+        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+
+        for body in bodies {
+            let insts = body.code_mut().elements_mut();
+            // ASSUMPTION: can always insert epilogue instruction as 2nd to last inst
+            // (right before End instruction)
+            let ep_index = insts.len() - 1;
+            insts.insert(ep_index, inst.clone());
+        }
+    }
 
     pub fn print_functions(&self) {
         for f in self.functions() {

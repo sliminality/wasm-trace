@@ -1,27 +1,22 @@
 /// An example of writing to a buffer and accessing it from JavaScript.
 
-const BUFFER_SIZE: usize = 10;
-static mut BUFFER: [i32; BUFFER_SIZE] = [-1; BUFFER_SIZE];
+const RUST_ARRAY_SIZE: usize = 10;
+static mut RUST_ARRAY: [i32; RUST_ARRAY_SIZE] = [-1; RUST_ARRAY_SIZE];
 
 #[no_mangle]
 pub extern "C" fn write(i: usize, x: i32) {
     unsafe {
         for j in 0..10 {
-            if j % 2 == 0 {
-                BUFFER[j] = -1 * (j as i32 + 1);
-            } else {
-                BUFFER[j] = j as i32 + 1;
-            }
+            RUST_ARRAY[j] = -1;
         }
-
         // Write `x` at the ith index.
-        BUFFER[i] = x;
+        RUST_ARRAY[i] = x;
     }
 }
 
 #[no_mangle]
 pub unsafe fn expose() -> *const i32 {
-    return &BUFFER as *const i32;
+    return &RUST_ARRAY as *const i32;
 }
 
 #[no_mangle]

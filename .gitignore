@@ -1,3 +1,3 @@
-test/**/*.wast
-test/**/*.wat
-test/**/*.wasm
+examples/**/*.wast
+examples/**/*.wat
+examples/**/*.wasm

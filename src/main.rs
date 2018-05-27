@@ -1,5 +1,8 @@
 #![feature(extern_prelude)]
 
+#[macro_use]
+mod macros;
+
 mod pass;
 
 use std::env;

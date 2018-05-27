@@ -32,7 +32,10 @@ function compileAndRun(argv) {
     .then(instance => {
       const { exports } = instance;
       assert(exports, 'no exports found');
-      assert(funcName in exports, `${funcName} not found in wasm exports`);
+      assert(
+        funcName in exports,
+        `${funcName} not found in wasm exports: ${Object.keys(exports)}`,
+      );
       const result = exports[funcName](...args);
       return { result, exports };
     });

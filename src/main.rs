@@ -6,13 +6,20 @@ use wasm_trace::module::WasmModule;
 fn main() {
     let path = env::args().nth(1).expect("USAGE: cargo run module.wasm");
     match WasmModule::from_file(path) {
-        Ok(module) => {
+        Ok(mut module) => {
             println!("\n-------------------\nTypes\n-------------------");
             for (i, t) in module.types().iter().enumerate() {
                 println!("{} {:?}", i, t);
             }
 
-            println!("\n------------------\nFunctions\n-------------------");
+            println!("\n------------------\nOrignal Functions\n-------------------");
+            for f in module.functions() {
+                println!("{}", f);
+            }
+
+            module.add_prelude_instruction(Instruction::GetLocal(0));
+
+            println!("\n------------------\nModified Functions\n-------------------");
             for f in module.functions() {
                 println!("{}", f);
             }

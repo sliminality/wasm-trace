@@ -118,6 +118,21 @@ impl WasmModule {
         let imported_functions = self.imported_functions();
         Either::Right(imported_functions.chain(own_functions))
     }
+    
+    pub fn add_prelude_instruction(&mut self, inst: Instruction) {
+        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+
+        for body in bodies {
+            let insts = body.code_mut().elements_mut();
+            insts.insert(0, inst.clone());
+        }
+    }    
+
+    pub fn print_functions(&self) {
+        for f in self.functions() {
+            println!("{}", f);
+        }
+    }
 
     fn exported_function_names(&self) -> HashMap<usize, String> {
         let mut names = HashMap::new();

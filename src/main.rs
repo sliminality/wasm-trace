@@ -2,7 +2,7 @@
 
 #[macro_use]
 mod macros;
-mod util;
+mod either;
 mod pass;
 
 use std::env;

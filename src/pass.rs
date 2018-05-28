@@ -6,7 +6,7 @@ use std::iter;
 use std::collections::HashMap;
 use parity_wasm::elements::*;
 
-use util::Either;
+use either::Either;
 
 #[derive(Debug)]
 pub struct WasmModule {
@@ -33,7 +33,7 @@ impl WasmModule {
     pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
         let function_count = self.module.functions_space();
         if function_count == 0 {
-            return Either::A(iter::empty::<WasmFunction>());
+            return Either::Left(iter::empty::<WasmFunction>());
         }
 
         let bodies = self.function_bodies();
@@ -50,7 +50,7 @@ impl WasmModule {
                      WasmFunction::new(id, ty, name, body, is_export)
                  });
 
-        Either::B(functions)
+        Either::Right(functions)
     }
 
     pub fn print_functions(&self) {
@@ -86,15 +86,15 @@ impl WasmModule {
     pub fn exports(&self) -> impl Iterator<Item = &ExportEntry> {
         self.module
             .export_section()
-            .map_or(Either::A(iter::empty()),
-                    |sec| Either::B(sec.entries().iter()))
+            .map_or(Either::Left(iter::empty()),
+                    |sec| Either::Right(sec.entries().iter()))
     }
 
     pub fn types(&self) -> impl Iterator<Item = &Type> {
         self.module
             .type_section()
-            .map_or(Either::A(iter::empty::<&Type>()),
-                    |sec| Either::B(sec.types().iter()))
+            .map_or(Either::Left(iter::empty::<&Type>()),
+                    |sec| Either::Right(sec.types().iter()))
     }
 
     pub fn get_type(&self, tyid: u32) -> Option<&Type> {
@@ -106,15 +106,15 @@ impl WasmModule {
     fn function_type_refs(&self) -> impl Iterator<Item = &Func> {
         self.module
             .function_section()
-            .map_or(Either::A(iter::empty::<&Func>()),
-                    |sec| Either::B(sec.entries().iter()))
+            .map_or(Either::Left(iter::empty::<&Func>()),
+                    |sec| Either::Right(sec.entries().iter()))
     }
 
     pub fn function_bodies(&self) -> impl Iterator<Item = &FuncBody> {
         self.module
             .code_section()
-            .map_or(Either::A(iter::empty::<&FuncBody>()),
-                    |sec| Either::B(sec.bodies().iter()))
+            .map_or(Either::Left(iter::empty::<&FuncBody>()),
+                    |sec| Either::Right(sec.bodies().iter()))
     }
 }
 

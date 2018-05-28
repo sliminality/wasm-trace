@@ -3,10 +3,10 @@
 #[macro_use]
 mod macros;
 mod either;
-mod pass;
+mod module;
 
 use std::env;
-use pass::WasmModule;
+use module::WasmModule;
 
 extern crate parity_wasm;
 

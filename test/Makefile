@@ -13,7 +13,7 @@ all:
 	make print
 
 clean:
-	rm *.wat
+	rm -f *.wat
 
 # Slim down `.wasm` files.
 # Requires [wasm-gc](https://github.com/alexcrichton/wasm-gc).

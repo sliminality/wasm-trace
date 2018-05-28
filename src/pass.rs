@@ -142,6 +142,10 @@ impl<'a> WasmFunction<'a> {
             is_export,
         }
     }
+
+    pub fn instructions(&self) -> impl Iterator<Item = &Instruction> {
+        self.body.code().elements().iter()
+    }
 }
 
 impl<'a> fmt::Display for WasmFunction<'a> {
@@ -164,10 +168,7 @@ impl<'a> fmt::Display for WasmFunction<'a> {
             }
         };
 
-        let instructions = self.body
-            .code()
-            .elements()
-            .iter()
+        let instructions = self.instructions()
             .map(|inst| format!("\t{:?}\n", inst))
             .collect::<String>();
 
@@ -219,12 +220,9 @@ mod test {
                                  Instruction::I32Shl,
                                  Instruction::End]];
 
-        for (actual, exp) in module
-                .functions()
-                .map(|f| f.body.code().elements().iter())
-                .zip(expected.iter()) {
-            for (a, b) in actual.zip(exp) {
-                assert_eq!(a, b);
+        for (i, f) in module.functions().enumerate() {
+            for (j, inst) in f.instructions().enumerate() {
+                assert_eq!(*inst, expected[i][j]);
             }
         }
     }

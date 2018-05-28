@@ -12,7 +12,12 @@ extern crate parity_wasm;
 
 fn main() {
     let path = env::args().nth(1).expect("USAGE: cargo run module.wasm");
-    if let Ok(module) = WasmModule::from_file(path) {
-        module.print_functions();
+    match WasmModule::from_file(path) {
+        Ok(module) => {
+            module.print_functions();
+        }
+        Err(e) => {
+            panic!(e);
+        }
     }
 }

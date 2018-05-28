@@ -1,2 +1,3 @@
-test/**/*.wast
-test/**/*.wasm
+test/node/**/*.wast
+test/node/**/*.wat
+test/node/**/*.wasm

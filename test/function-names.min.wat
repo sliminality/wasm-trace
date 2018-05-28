@@ -1,0 +1,40 @@
+(module
+ (type $0 (func (param i32 i32) (result i32)))
+ (type $1 (func (param i32) (result i32)))
+ (type $2 (func (param f64) (result f64)))
+ (table 0 anyfunc)
+ (memory $0 1)
+ (export "memory" (memory $0))
+ (export "_Z3addii" (func $0))
+ (export "_Z4add1i" (func $1))
+ (export "_Z5halved" (func $2))
+ (export "_Z7doubleri" (func $3))
+ (func $0 (; 0 ;) (type $0) (param $var$0 i32) (param $var$1 i32) (result i32)
+  (i32.add
+   (get_local $var$1)
+   (get_local $var$0)
+  )
+ )
+ (func $1 (; 1 ;) (type $1) (param $var$0 i32) (result i32)
+  (i32.add
+   (call $0
+    (get_local $var$0)
+    (get_local $var$0)
+   )
+   (get_local $var$0)
+  )
+ )
+ (func $2 (; 2 ;) (type $2) (param $var$0 f64) (result f64)
+  (f64.mul
+   (get_local $var$0)
+   (f64.const 0.5)
+  )
+ )
+ (func $3 (; 3 ;) (type $1) (param $var$0 i32) (result i32)
+  (i32.shl
+   (get_local $var$0)
+   (i32.const 1)
+  )
+ )
+)
+

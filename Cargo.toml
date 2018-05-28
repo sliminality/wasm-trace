@@ -4,3 +4,7 @@ version = "0.1.0"
 authors = ["Sarah Lim <sarah@sarahlim.com>"]
 
 [dependencies]
+parity-wasm = "0.31"
+
+[dev-dependencies]
+parity-wasm = "0.31"

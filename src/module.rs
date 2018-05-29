@@ -185,7 +185,7 @@ impl WasmModule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct WasmFunction<'a> {
     id: usize,
     ty: &'a Type,
@@ -201,6 +201,8 @@ impl<'a> WasmFunction<'a> {
                     |body| Either::Right(body.code().elements().iter()))
     }
 }
+
+impl<'a> Eq for WasmFunction<'a> {}
 
 impl<'a> fmt::Display for WasmFunction<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -236,7 +238,7 @@ impl<'a> fmt::Display for WasmFunction<'a> {
 }
 
 /// The module section in which the function originates.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SourceSection {
     Import,
     Function,
@@ -244,30 +246,49 @@ pub enum SourceSection {
 
 #[cfg(test)]
 mod test {
-    use std::collections::HashMap;
-    use std::path::Path;
     use parity_wasm::elements::*;
     use super::{WasmModule, WasmFunction};
-
-    fn assert_functions<P: AsRef<Path>>(path: P, expected: &HashMap<usize, String>) {
-        let module = WasmModule::from_file(path).unwrap();
-        let functions = module.function_names;
-        assert_eq!(&functions, expected);
-    }
 
     #[test]
     fn list_functions() {
         let file = "./test/function-names.wasm";
-        let expected =
-            map!{ 0 => "_Z3addii", 1 => "_Z4add1i", 2 => "_Z5halved", 3 => "_Z7doubleri" };
-        assert_functions(file, &expected);
+        let module = WasmModule::from_file(file).unwrap();
+        let functions = module.functions().collect::<Vec<WasmFunction>>();
+        let expected = 
+              map!{ 0 => Some("_Z3addii"), 1 => Some("_Z4add1i"), 2 => Some("_Z5halved"), 3 => Some("_Z7doubleri") };
+        for (id, name) in expected.into_iter() {
+            assert_eq!(name, functions[id].name);
+        }
     }
 
     #[test]
-    fn list_functions_with_imports() {
+    fn list_functions_with_some_imports() {
         let file = "./test/imports.wasm";
-        let expected = map!{ 1 => "_Z2hiv" };
-        assert_functions(file, &expected);
+        let module = WasmModule::from_file(file).unwrap();
+        let functions = module.functions().collect::<Vec<WasmFunction>>();
+        let expected = [Some("printf"), Some("_Z2hiv")];
+        for (id, &name) in expected.into_iter().enumerate() {
+            assert_eq!(name, functions[id].name);
+        }
+    }
+
+    #[test]
+    fn list_functions_with_many_imports() {
+        let file = "./test/more-imports.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+        let mut names = module.functions().map(|f| f.name).enumerate();
+        let num_imported_functions = module.count_imported_functions();
+
+        let expected = ["_Z12entered_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE",
+                        "_Z11exited_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE"];
+
+        for name in expected.iter() {
+            // Check that the function with the given name exists...
+            let func = names.find(|&(_, n)| n == Some(name));
+            assert_eq!(func.is_some(), true);
+            // ...and has an index after the imports.
+            assert_eq!(func.unwrap().0 > num_imported_functions, true);
+        }
     }
 
     #[test]
@@ -284,6 +305,42 @@ mod test {
             assert_eq!(module.count_own_functions() + module.count_imported_functions(),
                        expected);
         }
+    }
+
+    #[test]
+    /// Check whether we are correctly indexing functions to recover caller/callee names.
+    fn track_callee() {
+        let file = "./test/caller-callee-imports.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+
+        // Find caller.
+        let caller = module
+            .functions()
+            .find(|f| f.name.map_or(false, |name| name.contains("caller")));
+        assert_eq!(caller.is_some(), true, "caller exists");
+
+        // Find instruction where caller calls the callee.
+        let caller = caller.unwrap();
+        let callee_id = caller
+            .instructions()
+            .filter_map(|inst| if let Instruction::Call(callee) = inst {
+                            Some(callee)
+                        } else {
+                            None
+                        })
+            .nth(0);
+        assert_eq!(callee_id.is_some(), true, "callee id exists");
+
+        let callee_id = callee_id.unwrap();
+        let callee = module.functions().nth(*callee_id as usize);
+        assert_eq!(callee.is_some(), true, "callee exists");
+
+        let callee = callee.unwrap();
+        let callee_name = callee.name;
+        assert_eq!(callee_name.is_some(), true, "callee name exists");
+        assert_eq!(callee_name.unwrap().contains("callee"),
+                   true,
+                   "callee_id is correct");
     }
 
     #[test]

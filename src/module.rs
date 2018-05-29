@@ -39,7 +39,7 @@ impl WasmModule {
 
     /// Safe function for counting the number of imported functions.
     /// Use this instead of `self.imports().size_hint()`!
-    pub fn count_imported_functions(&self) -> usize {
+    pub fn imported_functions_count(&self) -> usize {
         self.module.import_count(ImportCountType::Function)
     }
 
@@ -91,8 +91,8 @@ impl WasmModule {
         }
 
         let imported_functions = self.imported_functions();
-        let imported_count = self.count_imported_functions();
-        let own_count = self.count_own_functions();
+        let imported_count = self.imported_functions_count();
+        let own_count = self.own_functions_count();
         assert_eq!(function_count, imported_count + own_count);
 
         let own_functions = self.function_types()
@@ -112,6 +112,7 @@ impl WasmModule {
                 }
             });
 
+        let imported_functions = self.imported_functions();
         Either::Right(imported_functions.chain(own_functions))
     }
 
@@ -125,6 +126,7 @@ impl WasmModule {
                     let name = export.field().to_owned();
                     names.insert(*id as usize, name);
                 }
+                // Skip over exports that aren't functions.
                 _ => {}
             }
         }
@@ -144,7 +146,7 @@ impl WasmModule {
                  })
     }
 
-    pub fn count_own_functions(&self) -> usize {
+    pub fn own_functions_count(&self) -> usize {
         self.module
             .function_section()
             .map_or(0, |sec| sec.entries().len())
@@ -277,7 +279,7 @@ mod test {
         let file = "./test/more-imports.wasm";
         let module = WasmModule::from_file(file).unwrap();
         let mut names = module.functions().map(|f| f.name).enumerate();
-        let num_imported_functions = module.count_imported_functions();
+        let num_imported_functions = module.imported_functions_count();
 
         let expected = ["_Z12entered_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE",
                         "_Z11exited_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE"];
@@ -302,7 +304,7 @@ mod test {
             assert_eq!(module.functions().collect::<Vec<WasmFunction>>().len(),
                        expected);
             assert_eq!(module.module.functions_space(), expected);
-            assert_eq!(module.count_own_functions() + module.count_imported_functions(),
+            assert_eq!(module.own_functions_count() + module.imported_functions_count(),
                        expected);
         }
     }

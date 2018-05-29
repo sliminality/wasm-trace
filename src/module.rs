@@ -45,8 +45,7 @@ impl WasmModule {
 
     pub fn imported_functions(&self) -> impl Iterator<Item = WasmFunction> {
         self.imports()
-            .enumerate()
-            .filter_map(move |(i, import)| if let External::Function(tyid) = import.external() {
+            .filter_map(move |import| if let External::Function(tyid) = import.external() {
                      // NOTE: Unlike with Internal::Function(id),
                      // the field of External::Function(_) is an index into
                      // the type section.
@@ -57,22 +56,29 @@ impl WasmModule {
                                          name)
                                          .as_str());
 
-                     Some(WasmFunction {
-                              // id is the index in the function index space.
-                              // An imported function's id is its order in the import section.
-                              id: i,
-                              ty,
-                              name: Some(name),
-                              body: None,
-                              source: SourceSection::Import,
-                          })
+                     // `i` is an index into the import section, but not all imports are functions,
+                     // so we can't use `i` directly as an index into the function index space.
+                     // Here, we return a tuple containing the information we need, and construct
+                     // the WasmFunction in the next step of the iterator.
+                     Some((ty, name))
                  } else {
                      None
                  })
+            .enumerate()
+            .map(|(i, (ty, name))| WasmFunction {
+                 // id is the index in the function index space.
+                 // An imported function's id is its order in the import section.
+                 id: i,
+                 ty,
+                 name: Some(name),
+                 body: None,
+                 source: SourceSection::Import,
+             })
     }
 
     /// Iterates over the function index space of the module.
-    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/wasm-reference-manual/blob/master/WebAssembly.md):
+    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
+    /// wasm-reference-manual/blob/master/WebAssembly.md):
     ///
     /// > The function index space begins with an index for each imported
     /// > function, in the order the imports appear in the Import Section,

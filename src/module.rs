@@ -37,6 +37,12 @@ impl WasmModule {
                     |section| Either::Right(section.entries().iter()))
     }
 
+    /// Safe function for counting the number of imported functions.
+    /// Use this instead of `self.imports().size_hint()`!
+    pub fn count_imported_functions(&self) -> usize {
+        self.module.import_count(ImportCountType::Function)
+    }
+
     pub fn imported_functions(&self) -> impl Iterator<Item = WasmFunction> {
         self.imports()
             .enumerate()
@@ -79,7 +85,9 @@ impl WasmModule {
         }
 
         let imported_functions = self.imported_functions();
-        let imported_count = imported_functions.size_hint().1.unwrap_or(0);
+        let imported_count = self.count_imported_functions();
+        let own_count = self.count_own_functions();
+        assert_eq!(function_count, imported_count + own_count);
 
         let own_functions = self.function_types()
             .zip(self.function_bodies())
@@ -97,9 +105,6 @@ impl WasmModule {
                     source: SourceSection::Function,
                 }
             });
-
-        let own_count = own_functions.size_hint().1.unwrap_or(0);
-        assert_eq!(function_count, imported_count + own_count);
 
         Either::Right(imported_functions.chain(own_functions))
     }
@@ -131,6 +136,12 @@ impl WasmModule {
                      self.get_type(tyid)
                          .expect("Invalid module: could not get type for function")
                  })
+    }
+
+    pub fn count_own_functions(&self) -> usize {
+        self.module
+            .function_section()
+            .map_or(0, |sec| sec.entries().len())
     }
 
     pub fn exports(&self) -> impl Iterator<Item = &ExportEntry> {
@@ -256,11 +267,16 @@ mod test {
     #[test]
     fn count_functions() {
         let files = [("./test/function-names.wasm", 4),
-                     ("./test/imports.wasm", 2)];
+                     ("./test/imports.wasm", 2),
+                     ("./test/more-imports.wasm", 32)];
         for (file, num_functions) in files.iter() {
             let module = WasmModule::from_file(file).unwrap();
+            let expected = *num_functions as usize;
             assert_eq!(module.functions().collect::<Vec<WasmFunction>>().len(),
-                       *num_functions as usize);
+                       expected);
+            assert_eq!(module.module.functions_space(), expected);
+            assert_eq!(module.count_own_functions() + module.count_imported_functions(),
+                       expected);
         }
     }
 

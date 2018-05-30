@@ -138,12 +138,11 @@ impl WasmModule {
     }
 
     pub fn function_types(&self) -> impl Iterator<Item = &Type> {
-        self.function_type_refs()
-            .map(Func::type_ref)
-            .map(move |tyid| {
-                     self.get_type(tyid)
-                         .expect("Invalid module: could not get type for function")
-                 })
+        self.function_type_refs().iter()
+            .map(move |&func| {
+                self.get_type(func.type_ref())
+                    .expect("Invalid module: could not get type for function")
+            })
     }
 
     pub fn own_functions_count(&self) -> usize {
@@ -152,18 +151,16 @@ impl WasmModule {
             .map_or(0, |sec| sec.entries().len())
     }
 
-    pub fn exports(&self) -> impl Iterator<Item = &ExportEntry> {
+    pub fn exports(&self) -> &[ExportEntry] {
         self.module
             .export_section()
-            .map_or(Either::Left(iter::empty()),
-                    |sec| Either::Right(sec.entries().iter()))
+            .map_or(&[], ExportSection::entries)
     }
 
-    pub fn types(&self) -> impl Iterator<Item = &Type> {
+    pub fn types(&self) -> &[Type] {
         self.module
             .type_section()
-            .map_or(Either::Left(iter::empty::<&Type>()),
-                    |sec| Either::Right(sec.types().iter()))
+            .map_or(&[], TypeSection::types)
     }
 
     pub fn get_type(&self, tyid: u32) -> Option<&Type> {
@@ -172,18 +169,16 @@ impl WasmModule {
             .and_then(|sec| sec.types().get(tyid as usize))
     }
 
-    fn function_type_refs(&self) -> impl Iterator<Item = &Func> {
+    fn function_type_refs(&self) -> &[Func] {
         self.module
             .function_section()
-            .map_or(Either::Left(iter::empty::<&Func>()),
-                    |sec| Either::Right(sec.entries().iter()))
+            .map_or(&[], FunctionSection::entries)
     }
 
-    pub fn function_bodies(&self) -> impl Iterator<Item = &FuncBody> {
+    pub fn function_bodies(&self) -> &[FuncBody] {
         self.module
             .code_section()
-            .map_or(Either::Left(iter::empty::<&FuncBody>()),
-                    |sec| Either::Right(sec.bodies().iter()))
+            .map_or(&[], CodeSection::bodies)
     }
 }
 

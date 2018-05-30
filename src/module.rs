@@ -23,6 +23,10 @@ impl WasmModule {
         Ok(result)
     }
 
+    pub fn to_file<P: AsRef<Path>>(path: P, wasm_module: WasmModule) -> Result<(), Error> {
+        serialize_to_file(path, wasm_module.module)
+    }
+
     fn new(module: Module) -> Self {
         WasmModule {
             module,

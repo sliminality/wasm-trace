@@ -16,6 +16,10 @@ fn main() {
             for f in module.functions() {
                 println!("{}", f);
             }
+
+            if let Err(e) =  WasmModule::to_file("a.wasm", module) {
+              panic!(e);
+            }
         }
         Err(e) => {
             panic!(e);

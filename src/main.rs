@@ -15,7 +15,7 @@ fn main() {
     match WasmModule::from_file(path) {
         Ok(module) => {
             println!("\n-------------------\nTypes\n-------------------");
-            for (i, t) in module.types().enumerate() {
+            for (i, t) in module.types().iter().enumerate() {
                 println!("{} {:?}", i, t);
             }
 

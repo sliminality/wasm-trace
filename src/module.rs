@@ -18,8 +18,8 @@ impl WasmModule {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let module = deserialize_file(path)?;
         let mut result = WasmModule::new(module);
-        let function_names = result.exported_function_names();
-        result.function_names = function_names;
+        result.function_names = result.exported_function_names();
+
         Ok(result)
     }
 
@@ -30,41 +30,104 @@ impl WasmModule {
         }
     }
 
+    pub fn imports(&self) -> impl Iterator<Item = &ImportEntry> {
+        self.module
+            .import_section()
+            .map_or(Either::Left(iter::empty()),
+                    |section| Either::Right(section.entries().iter()))
+    }
+
+    /// Safe function for counting the number of imported functions.
+    /// Use this instead of `self.imports().size_hint()`!
+    pub fn imported_functions_count(&self) -> usize {
+        self.module.import_count(ImportCountType::Function)
+    }
+
+    pub fn imported_functions(&self) -> impl Iterator<Item = WasmFunction> {
+        self.imports()
+            .filter_map(move |import| if let External::Function(tyid) = import.external() {
+                     // NOTE: Unlike with Internal::Function(id),
+                     // the field of External::Function(_) is an index into
+                     // the type section.
+                     let name = import.field();
+                     let ty = self.get_type(*tyid)
+                         .expect(format!("Couldn't get type {} for imported function {}",
+                                         tyid,
+                                         name)
+                                         .as_str());
+
+                     // `i` is an index into the import section, but not all imports are functions,
+                     // so we can't use `i` directly as an index into the function index space.
+                     // Here, we return a tuple containing the information we need, and construct
+                     // the WasmFunction in the next step of the iterator.
+                     Some((ty, name))
+                 } else {
+                     None
+                 })
+            .enumerate()
+            .map(|(i, (ty, name))| WasmFunction {
+                 // id is the index in the function index space.
+                 // An imported function's id is its order in the import section.
+                 id: i,
+                 ty,
+                 name: Some(name),
+                 body: None,
+                 source: SourceSection::Import,
+             })
+    }
+
+    /// Iterates over the function index space of the module.
+    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
+    /// wasm-reference-manual/blob/master/WebAssembly.md):
+    ///
+    /// > The function index space begins with an index for each imported
+    /// > function, in the order the imports appear in the Import Section,
+    /// > if present, followed by an index for each function in the Function Section,
+    /// > if present, in the order of that section.
     pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
         let function_count = self.module.functions_space();
         if function_count == 0 {
             return Either::Left(iter::empty::<WasmFunction>());
         }
 
-        let bodies = self.function_bodies();
-        let types = self.function_types();
-        assert_eq!(function_count, bodies.size_hint().0);
-        assert_eq!(function_count, types.size_hint().0);
+        let imported_functions = self.imported_functions();
+        let imported_count = self.imported_functions_count();
+        let own_count = self.own_functions_count();
+        assert_eq!(function_count, imported_count + own_count);
 
-        let functions = types
-            .zip(bodies)
+        let own_functions = self.function_types()
+            .zip(self.function_bodies())
             .enumerate()
-            .map(move |(id, (ty, body))| {
-                     let name = self.get_function_name(id);
-                     let is_export = name.is_some(); // TODO(slim): Make this more robust later.
-                     WasmFunction::new(id, ty, name, body, is_export)
-                 });
+            .map(move |(i, (ty, body))| {
+                // Functions from the module function section appear
+                // after imported functions, in the index space.
+                let id = imported_count + i;
+                let name = self.get_function_name(id);
+                WasmFunction {
+                    id,
+                    ty,
+                    name,
+                    body: Some(body),
+                    source: SourceSection::Function,
+                }
+            });
 
-        Either::Right(functions)
-    }
-
-    pub fn print_functions(&self) {
-        for f in self.functions() {
-            println!("{}", f);
-        }
+        let imported_functions = self.imported_functions();
+        Either::Right(imported_functions.chain(own_functions))
     }
 
     fn exported_function_names(&self) -> HashMap<usize, String> {
         let mut names = HashMap::new();
         for export in self.exports() {
-            if let Internal::Function(id) = export.internal() {
-                let name = export.field().to_owned();
-                names.insert(*id as usize, name);
+            match export.internal() {
+                Internal::Function(id) => {
+                    // NOTE(slim): `id` is an index into the function index space,
+                    // not the types section or the function section.
+                    let name = export.field().to_owned();
+                    names.insert(*id as usize, name);
+                }
+                // Skip over exports that aren't functions.
+                _ => {}
             }
         }
         names
@@ -81,6 +144,12 @@ impl WasmModule {
                      self.get_type(tyid)
                          .expect("Invalid module: could not get type for function")
                  })
+    }
+
+    pub fn own_functions_count(&self) -> usize {
+        self.module
+            .function_section()
+            .map_or(0, |sec| sec.entries().len())
     }
 
     pub fn exports(&self) -> impl Iterator<Item = &ExportEntry> {
@@ -118,35 +187,24 @@ impl WasmModule {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct WasmFunction<'a> {
     id: usize,
     ty: &'a Type,
     name: Option<&'a str>,
-    body: &'a FuncBody,
-    is_export: bool,
+    body: Option<&'a FuncBody>,
+    source: SourceSection,
 }
 
 impl<'a> WasmFunction<'a> {
-    pub fn new(id: usize,
-               ty: &'a Type,
-               name: Option<&'a str>,
-               body: &'a FuncBody,
-               is_export: bool)
-               -> Self {
-        WasmFunction {
-            id,
-            ty,
-            name,
-            body,
-            is_export,
-        }
-    }
-
     pub fn instructions(&self) -> impl Iterator<Item = &Instruction> {
-        self.body.code().elements().iter()
+        self.body
+            .map_or(Either::Left(iter::empty()),
+                    |body| Either::Right(body.code().elements().iter()))
     }
 }
+
+impl<'a> Eq for WasmFunction<'a> {}
 
 impl<'a> fmt::Display for WasmFunction<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -172,35 +230,125 @@ impl<'a> fmt::Display for WasmFunction<'a> {
             .map(|inst| format!("\t{:?}\n", inst))
             .collect::<String>();
 
-        write!(f, "{} : {}\n{}", name_part, ty_part, instructions)
+        write!(f,
+               "{:?} {} : {}\n{}",
+               self.source,
+               name_part,
+               ty_part,
+               instructions)
     }
+}
+
+/// The module section in which the function originates.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SourceSection {
+    Import,
+    Function,
 }
 
 #[cfg(test)]
 mod test {
     use parity_wasm::elements::*;
-    use super::WasmModule;
-
-    static FILE: &str = "./test/function-names.wasm";
+    use super::{WasmModule, WasmFunction};
 
     #[test]
     fn list_functions() {
-        let module = WasmModule::from_file(FILE).unwrap();
-        let functions = module.function_names;
-        let expected =
-            map!{ 0 => "_Z3addii", 1 => "_Z4add1i", 2 => "_Z5halved", 3 => "_Z7doubleri" };
-        assert_eq!(functions, expected);
+        let file = "./test/function-names.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+        let functions = module.functions().collect::<Vec<WasmFunction>>();
+        let expected = 
+              map!{ 0 => Some("_Z3addii"), 1 => Some("_Z4add1i"), 2 => Some("_Z5halved"), 3 => Some("_Z7doubleri") };
+        for (id, name) in expected.into_iter() {
+            assert_eq!(name, functions[id].name);
+        }
+    }
+
+    #[test]
+    fn list_functions_with_some_imports() {
+        let file = "./test/imports.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+        let functions = module.functions().collect::<Vec<WasmFunction>>();
+        let expected = [Some("printf"), Some("_Z2hiv")];
+        for (id, &name) in expected.into_iter().enumerate() {
+            assert_eq!(name, functions[id].name);
+        }
+    }
+
+    #[test]
+    fn list_functions_with_many_imports() {
+        let file = "./test/more-imports.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+        let mut names = module.functions().map(|f| f.name).enumerate();
+        let num_imported_functions = module.imported_functions_count();
+
+        let expected = ["_Z12entered_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE",
+                        "_Z11exited_funcNSt3__112basic_stringIcNS_11char_traitsIcEENS_9allocatorIcEEEE"];
+
+        for name in expected.iter() {
+            // Check that the function with the given name exists...
+            let func = names.find(|&(_, n)| n == Some(name));
+            assert_eq!(func.is_some(), true);
+            // ...and has an index after the imports.
+            assert_eq!(func.unwrap().0 > num_imported_functions, true);
+        }
     }
 
     #[test]
     fn count_functions() {
-        let module = parity_wasm::deserialize_file(FILE).unwrap();
-        assert_eq!(module.functions_space(), 4);
+        let files = [("./test/function-names.wasm", 4),
+                     ("./test/imports.wasm", 2),
+                     ("./test/more-imports.wasm", 32)];
+        for (file, num_functions) in files.iter() {
+            let module = WasmModule::from_file(file).unwrap();
+            let expected = *num_functions as usize;
+            assert_eq!(module.functions().collect::<Vec<WasmFunction>>().len(),
+                       expected);
+            assert_eq!(module.module.functions_space(), expected);
+            assert_eq!(module.own_functions_count() + module.imported_functions_count(),
+                       expected);
+        }
+    }
+
+    #[test]
+    /// Check whether we are correctly indexing functions to recover caller/callee names.
+    fn track_callee() {
+        let file = "./test/caller-callee-imports.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+
+        // Find caller.
+        let caller = module
+            .functions()
+            .find(|f| f.name.map_or(false, |name| name.contains("caller")));
+        assert_eq!(caller.is_some(), true, "caller exists");
+
+        // Find instruction where caller calls the callee.
+        let caller = caller.unwrap();
+        let callee_id = caller
+            .instructions()
+            .filter_map(|inst| if let Instruction::Call(callee) = inst {
+                            Some(callee)
+                        } else {
+                            None
+                        })
+            .nth(0);
+        assert_eq!(callee_id.is_some(), true, "callee id exists");
+
+        let callee_id = callee_id.unwrap();
+        let callee = module.functions().nth(*callee_id as usize);
+        assert_eq!(callee.is_some(), true, "callee exists");
+
+        let callee = callee.unwrap();
+        let callee_name = callee.name;
+        assert_eq!(callee_name.is_some(), true, "callee name exists");
+        assert_eq!(callee_name.unwrap().contains("callee"),
+                   true,
+                   "callee_id is correct");
     }
 
     #[test]
     fn list_instructions() {
-        let module = WasmModule::from_file(FILE).unwrap();
+        let file = "./test/function-names.wasm";
+        let module = WasmModule::from_file(file).unwrap();
         let expected = vec![vec![Instruction::GetLocal(1),
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,

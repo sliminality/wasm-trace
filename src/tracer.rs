@@ -1,3 +1,5 @@
+use ring_buffer::RingBuffer;
+
 /// Wrapper around the ring buffer for recording function calls.
 #[derive(Debug)]
 pub struct Tracer(RingBuffer<u32>);

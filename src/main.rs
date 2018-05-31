@@ -5,6 +5,7 @@ mod macros;
 mod either;
 mod module;
 mod ring_buffer;
+mod tracer;
 
 use std::env;
 use module::WasmModule;

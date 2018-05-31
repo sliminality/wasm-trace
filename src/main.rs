@@ -1,16 +1,7 @@
-#![feature(extern_prelude)]
-
-#[macro_use]
-mod macros;
-mod either;
-mod module;
-mod ring_buffer;
-mod tracer;
+extern crate wasm_trace;
 
 use std::env;
-use module::WasmModule;
-
-extern crate parity_wasm;
+use wasm_trace::module::WasmModule;
 
 fn main() {
     let path = env::args().nth(1).expect("USAGE: cargo run module.wasm");

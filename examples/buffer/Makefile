@@ -13,7 +13,7 @@ all:
 	make node
 
 clean:
-	rm -f *.wasm *.wat
+	rm -f *.wasm *.wat *.wast
 
 # Compile `.rs` to `.wasm` with minimal optimization.
 build:

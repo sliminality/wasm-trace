@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::collections::VecDeque;
 
 /// Ring buffer data structure tracks a fixed size of function calls.
@@ -8,7 +9,7 @@ pub struct RingBuffer<T> {
     capacity: usize,
 }
 
-impl<T> RingBuffer<T> {
+impl<T: Debug> RingBuffer<T> {
     /// Initialize a new ring buffer with a given capacity.
     pub fn new(capacity: usize) -> Self {
         RingBuffer {
@@ -42,6 +43,13 @@ impl<T> RingBuffer<T> {
     /// Returns an iterator over the buffer contents.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.data.iter()
+    }
+
+    /// Returns a slice of the buffer contents.
+    pub fn as_slice(&self) -> &[T] {
+        let (front, back) = self.data.as_slices();
+        assert!(back.is_empty(), "elements are only inserted at the back");
+        front
     }
 }
 
@@ -93,6 +101,19 @@ mod test_ring_buffer {
         }
         for (i, &x) in buf.iter().enumerate() {
             assert_eq!(x, i);
+        }
+    }
+
+    #[test]
+    fn as_slice() {
+        let mut buf: RingBuffer<&str> = RingBuffer::new(5);
+        let strings = ["apple", "banana", "carrot"];
+        for s in strings.iter() {
+            buf.enqueue(s);
+        }
+        let slice = buf.as_slice();
+        for (&actual, &expected) in slice.iter().zip(strings.iter()) {
+            assert_eq!(actual, expected);
         }
     }
 }

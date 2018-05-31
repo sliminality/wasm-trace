@@ -80,6 +80,37 @@ impl WasmModule {
              })
     }
 
+    // pub fn own_functions(&self) -> impl Iterator<Item = WasmFunction> {     
+    //     // look into this
+    //     let function_count = self.module.functions_space();
+    //     if function_count == 0 {
+    //         return Either::Left(iter::empty::<WasmFunction>());
+    //     }
+
+    //     let imported_count = self.imported_functions_count();
+    //     let own_count = self.own_functions_count();
+    //     assert_eq!(function_count, imported_count + own_count);
+
+    //     Either::Right(
+    //         self.function_types()
+    //         .zip(self.function_bodies())
+    //         .enumerate()
+    //         .map(move |(i, (ty, body))| {
+    //             // Functions from the module function section appear
+    //             // after imported functions, in the index space.
+    //             let id = imported_count + i;
+    //             let name = self.get_function_name(id);
+    //             WasmFunction {
+    //                 id,
+    //                 ty,
+    //                 name,
+    //                 body: Some(body),
+    //                 source: SourceSection::Function,
+    //             }
+    //         })
+    //     )
+    // }   
+
     /// Iterates over the function index space of the module.
     /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
     /// wasm-reference-manual/blob/master/WebAssembly.md):
@@ -88,6 +119,22 @@ impl WasmModule {
     /// > function, in the order the imports appear in the Import Section,
     /// > if present, followed by an index for each function in the Function Section,
     /// > if present, in the order of that section.
+    // pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
+    //     // check this out
+    //     if self.module.functions_space() == 0 {
+    //         return Either::Left(iter::empty::<WasmFunction>());
+    //     }        
+
+    //     let function_count = self.module.functions_space();
+    //     let imported_count = self.imported_functions_count();
+    //     let own_count = self.own_functions_count();
+    //     assert_eq!(function_count, imported_count + own_count);
+
+    //     let own_functions = self.own_functions();
+    //     let imported_functions = self.imported_functions();
+    //     Either::Right(imported_functions.chain(own_functions))
+    // }
+
     pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
         let function_count = self.module.functions_space();
         if function_count == 0 {
@@ -117,30 +164,54 @@ impl WasmModule {
 
         let imported_functions = self.imported_functions();
         Either::Right(imported_functions.chain(own_functions))
+    }    
+    
+    // TODO: write tests
+    pub fn add_prelude_instructions(&mut self) {
+        println!("meg grasse didn't go to tidal");
+        // 3 corresponds to index of entered_func()
+        let instruction_index = 3;
+        let instruction = Instruction::Call(instruction_index);
+        // we have this list of own_function bodies
+        // we have this mutable list of real bodies [2x the size]
+        // we want to swap old bodies for fresh ones
+        let imports_count = self.imported_functions_count();
+        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+
+        bodies
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, body)| {
+                // if i + imports_count != instruction_index as usize {
+                if i == 2 { 
+                    let insts = body.code_mut().elements_mut();                    
+                    insts.insert(0, instruction.clone());
+                }
+            });
     }
     
     // TODO: write tests
-    pub fn add_prelude_instruction(&mut self, inst: Instruction) {
-        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+    // pub fn add_epilogue_instruction(&mut self, inst: Instruction, index: usize) {
+        // let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+        // 
+        // for body in bodies {
+        //     let insts = body.code_mut().elements_mut();
+        //     // ASSUMPTION: can always insert epilogue instruction as 2nd to last inst
+        //     // (right before End instruction)
+        //     let ep_index = insts.len() - 1;
+        //     insts.insert(ep_index, inst.clone());
+        // }
+    // }
 
-        for body in bodies {
-            let insts = body.code_mut().elements_mut();
-            insts.insert(0, inst.clone());
-        }
-    }
-    
-    // TODO: write tests
-    pub fn add_epilogue_instruction(&mut self, inst: Instruction) {
-        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
-
-        for body in bodies {
-            let insts = body.code_mut().elements_mut();
-            // ASSUMPTION: can always insert epilogue instruction as 2nd to last inst
-            // (right before End instruction)
-            let ep_index = insts.len() - 1;
-            insts.insert(ep_index, inst.clone());
-        }
-    }
+    // fn add_instruction(instruction: Instruction, index: usize, func_body: FuncBody) -> FuncBody {
+    //     let locals = func_body.locals().to_owned();
+    //     let elements = func_body.code().elements().to_owned();
+    //     elements.insert(index, instruction);
+    //     FuncBody::new(
+    //         locals, 
+    //         Instructions::new(elements)
+    //     )
+    // }
 
     pub fn print_functions(&self) {
         for f in self.functions() {
@@ -213,6 +284,12 @@ impl WasmModule {
             .code_section()
             .map_or(&[], CodeSection::bodies)
     }
+
+    pub fn function_bodies_mut(&mut self) -> &mut Vec<FuncBody> {
+        // deal with empty vector later
+        self.module.code_section_mut().unwrap().bodies_mut()
+    }
+ 
 }
 
 #[derive(Debug, PartialEq)]

@@ -41,9 +41,18 @@ function compileAndRun(argv) {
     });
 }
 
+// Print the contents of a memory region to the console.
+function readMemory(memory, offset, length = 1) {
+  const buffer = new Int32Array(memory.buffer, offset, length);
+  console.log(buffer);
+}
+
 if (module.parent) {
   // Module is being imported, rather than invoked standalone.
-  module.exports.default = compileAndRun;
+  module.exports = {
+    compileAndRun,
+    readMemory,
+  };
 } else {
   // Script is invoked from the terminal, compile and log result.
   compileAndRun(process.argv)

@@ -137,11 +137,12 @@ impl WasmModule {
     }
 
     pub fn function_types(&self) -> impl Iterator<Item = &Type> {
-        self.function_type_refs().iter()
+        self.function_type_refs()
+            .iter()
             .map(move |&func| {
-                self.get_type(func.type_ref())
-                    .expect("Invalid module: could not get type for function")
-            })
+                     self.get_type(func.type_ref())
+                         .expect("Invalid module: could not get type for function")
+                 })
     }
 
     pub fn own_functions_count(&self) -> usize {

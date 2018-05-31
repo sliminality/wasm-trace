@@ -248,7 +248,7 @@ mod test {
 
     #[test]
     fn list_functions() {
-        let file = "./test/function-names.wasm";
+        let file = "./tests/function-names.wasm";
         let module = WasmModule::from_file(file).unwrap();
         let functions = module.functions().collect::<Vec<WasmFunction>>();
         let expected = 
@@ -260,7 +260,7 @@ mod test {
 
     #[test]
     fn list_functions_with_some_imports() {
-        let file = "./test/imports.wasm";
+        let file = "./tests/imports.wasm";
         let module = WasmModule::from_file(file).unwrap();
         let functions = module.functions().collect::<Vec<WasmFunction>>();
         let expected = [Some("printf"), Some("_Z2hiv")];
@@ -271,7 +271,7 @@ mod test {
 
     #[test]
     fn list_functions_with_many_imports() {
-        let file = "./test/more-imports.wasm";
+        let file = "./tests/more-imports.wasm";
         let module = WasmModule::from_file(file).unwrap();
         let mut names = module.functions().map(|f| f.name).enumerate();
         let num_imported_functions = module.imported_functions_count();
@@ -290,9 +290,9 @@ mod test {
 
     #[test]
     fn count_functions() {
-        let files = [("./test/function-names.wasm", 4),
-                     ("./test/imports.wasm", 2),
-                     ("./test/more-imports.wasm", 32)];
+        let files = [("./tests/function-names.wasm", 4),
+                     ("./tests/imports.wasm", 2),
+                     ("./tests/more-imports.wasm", 32)];
         for (file, num_functions) in files.iter() {
             let module = WasmModule::from_file(file).unwrap();
             let expected = *num_functions as usize;
@@ -307,7 +307,7 @@ mod test {
     #[test]
     /// Check whether we are correctly indexing functions to recover caller/callee names.
     fn track_callee() {
-        let file = "./test/caller-callee-imports.wasm";
+        let file = "./tests/caller-callee-imports.wasm";
         let module = WasmModule::from_file(file).unwrap();
 
         // Find caller.
@@ -342,7 +342,7 @@ mod test {
 
     #[test]
     fn list_instructions() {
-        let file = "./test/function-names.wasm";
+        let file = "./tests/function-names.wasm";
         let module = WasmModule::from_file(file).unwrap();
         let expected = vec![vec![Instruction::GetLocal(1),
                                  Instruction::GetLocal(0),

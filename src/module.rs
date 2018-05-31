@@ -90,7 +90,6 @@ impl WasmModule {
             return Either::Left(iter::empty::<WasmFunction>());
         }
 
-        let imported_functions = self.imported_functions();
         let imported_count = self.imported_functions_count();
         let own_count = self.own_functions_count();
         assert_eq!(function_count, imported_count + own_count);

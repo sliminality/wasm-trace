@@ -37,8 +37,8 @@ wat:
 # Execute a `.wasm` file in Node.js.
 node:
 	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION1) $(ARGS)
-#	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION2) $(ARGS)
+	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION2) $(ARGS)
 
 output:
 	node ../bin/runWasm.js a.wasm $(FUNCTION1) $(ARGS)
-#	node ../bin/runWasm.js a.wasm $(FUNCTION2) $(ARGS)
+	node ../bin/runWasm.js a.wasm $(FUNCTION2) $(ARGS)

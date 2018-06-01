@@ -118,12 +118,12 @@ impl WasmModule {
 
         // manual call for `examples/enter-exit-count`
         // these indexes can be found by printing functions
-        self.add_prelude_instructions_to_bodies((7, 8), &vec![0, 1, 2, 3, 4, 5]);
+        self.add_prelude_instructions_to_bodies((7, 8), &vec![1, 2, 3, 4, 5, 6]);
     }  
 
     pub fn add_epilogue_instructions(&mut self) {
         // manual call for `examples/enter-exit-count`
-        self.add_epilogue_instructions_to_bodies((7, 8), &vec![0, 1, 2, 3, 4, 5]);
+        self.add_epilogue_instructions_to_bodies((7, 8), &vec![1, 2, 3, 4, 5, 6]);
     }  
     
     /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`

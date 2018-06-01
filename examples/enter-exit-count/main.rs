@@ -23,7 +23,7 @@ pub fn interface_return_entered_func_count() -> usize {
     let res1 = do_work(10);
     let res2 = do_more_work(res1);
     // to make sure res2 is GENed & not marked as dead code
-    // println!("{}", 4);
+    println!("{}", res2);
     return_entered_func_count()
 }
 

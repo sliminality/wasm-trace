@@ -2,7 +2,7 @@ FILE = main
 MINFILE = $(FILE).min
 
 # wasm function name and arguments
-FUNCTION = main
+FUNCTION = entry
 ARGS = "2 1000"
 
 # Compile `test.rs` and execute in Node.

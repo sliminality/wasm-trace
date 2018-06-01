@@ -20,7 +20,9 @@ pub unsafe fn expose() -> *const i32 {
 }
 
 #[no_mangle]
-pub fn main(i: usize, x: i32) -> *const i32 {
+pub fn entry(i: usize, x: i32) -> *const i32 {
     write(i, x);
     unsafe { expose() }
 }
+
+fn main() {}

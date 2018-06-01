@@ -30,6 +30,7 @@ impl<T: Debug> RingBuffer<T> {
         self.data.push_back(item);
     }
 
+    #[allow(dead_code)]
     /// Dequeues an item from the front of the buffer.
     pub fn dequeue(&mut self) -> Option<T> {
         self.data.pop_front()
@@ -40,6 +41,7 @@ impl<T: Debug> RingBuffer<T> {
         self.data.len()
     }
 
+    #[allow(dead_code)]
     /// Returns an iterator over the buffer contents.
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.data.iter()

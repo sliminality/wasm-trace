@@ -18,7 +18,7 @@ fn main() {
             // }
 
             module.add_prelude_instructions();
-            module.add_epilogue_instructions();
+            // module.add_epilogue_instructions();
 
             println!("\n------------------\nModified Functions\n-------------------");
             for (i, f) in module.functions().enumerate() {

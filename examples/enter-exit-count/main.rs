@@ -5,12 +5,35 @@ static mut ENTERED_FUNC_COUNT: usize = 0;
 static mut EXITED_FUNC_COUNT: usize = 0;
 
 pub fn main() {
-    do_work(7);
 }
 
 #[no_mangle]
 pub fn do_work(x: i32) -> i32 {
     x - 1
+}
+
+#[no_mangle]
+pub fn do_more_work(x: i32) -> i32 {
+    x - 2
+}
+
+
+#[no_mangle]
+pub fn interface_return_entered_func_count() -> usize {
+    let res1 = do_work(10);
+    let res2 = do_more_work(res1);
+    // to make sure res2 is GENed & not marked as dead code
+    // println!("{}", 4);
+    return_entered_func_count()
+}
+
+#[no_mangle]
+pub fn interface_return_exited_func_count() -> usize {
+    let res1 = do_work(10);
+    let res2 = do_more_work(res1);
+    // to make sure res2 is GENed & not marked as dead code
+    // println!("{}", res2);        
+    return_exited_func_count()
 }
 
 #[no_mangle]

@@ -21,7 +21,6 @@ pub fn do_more_work(x: i32) -> i32 {
     x - 2
 }
 
-
 #[no_mangle]
 pub fn interface_return_entered_func_count() -> usize {
     let res1 = do_work(10);

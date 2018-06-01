@@ -118,17 +118,17 @@ impl WasmModule {
 
         // manual call for `examples/enter-exit-count`
         // these indexes can be found by printing functions
-        self.add_prelude_instructions_to_bodies((7, 8), &vec![1, 2, 3, 4, 5, 6]);
+        self.add_prelude_instructions_to_bodies(7, 8, &vec![1, 2, 3, 4, 5, 6]);
     }  
 
     pub fn add_epilogue_instructions(&mut self) {
         // manual call for `examples/enter-exit-count`
-        self.add_epilogue_instructions_to_bodies((7, 8), &vec![1, 2, 3, 4, 5, 6]);
+        self.add_epilogue_instructions_to_bodies(7, 8, &vec![1, 2, 3, 4, 5, 6]);
     }  
     
     /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
-    fn add_prelude_instructions_to_bodies(&mut self, reserved_indexes: (usize, usize), own_funcs: &[usize]) {
-        let instruction = Instruction::Call(reserved_indexes.0 as u32);
+    fn add_prelude_instructions_to_bodies(&mut self, entered_func_index: usize, exited_func_index: usize, own_funcs: &[usize]) {
+        let instruction = Instruction::Call(entered_func_index as u32);
         let imports_count = self.imported_functions_count();
         self.module.code_section_mut().unwrap().bodies_mut()
             .iter_mut()
@@ -136,8 +136,8 @@ impl WasmModule {
             .for_each(|(i, body)| {
                 let function_index = i + imports_count;
                 if own_funcs.contains(&function_index) &&
-                    function_index != reserved_indexes.0 &&
-                    function_index != reserved_indexes.1 {
+                    function_index != entered_func_index &&
+                    function_index != exited_func_index {
                     let insts = body.code_mut().elements_mut();                    
                     insts.insert(0, instruction.clone());
                 }
@@ -145,8 +145,8 @@ impl WasmModule {
     }
 
     /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
-    fn add_epilogue_instructions_to_bodies(&mut self, reserved_indexes: (usize, usize), own_funcs: &[usize]) {
-        let instruction = Instruction::Call(reserved_indexes.1 as u32);
+    fn add_epilogue_instructions_to_bodies(&mut self, entered_func_index: usize, exited_func_index: usize, own_funcs: &[usize]) {
+        let instruction = Instruction::Call(exited_func_index as u32);
         let imports_count = self.imported_functions_count();
         self.module.code_section_mut().unwrap().bodies_mut()
             .iter_mut()
@@ -154,8 +154,8 @@ impl WasmModule {
             .for_each(|(i, body)| {
                 let function_index = i + imports_count;
                 if own_funcs.contains(&function_index) &&
-                    function_index != reserved_indexes.0 &&
-                    function_index != reserved_indexes.1 {
+                    function_index != entered_func_index &&
+                    function_index != exited_func_index {
                     let insts = body.code_mut().elements_mut();
                     let ep_index = insts.len() - 1;
                     insts.insert(ep_index, instruction.clone());
@@ -431,9 +431,44 @@ mod test {
     }
 
     #[test]
-    fn insert_prelude_instruction() {
+    fn insert_prelude_instructions() {
         let file = "./tests/function-names.wasm";
-        let module = WasmModule::from_file(file).unwrap();
+        let mut module = WasmModule::from_file(file).unwrap();
+        let expected = vec![vec![Instruction::GetLocal(1),
+                                 Instruction::GetLocal(0),
+                                 Instruction::I32Add,
+                                 Instruction::End],
+                            vec![Instruction::GetLocal(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::Call(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::I32Add,
+                                 Instruction::End],
+                            vec![Instruction::Call(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::F64Const(4602678819172646912),
+                                 Instruction::F64Mul,
+                                 Instruction::End],
+                            vec![Instruction::Call(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::I32Const(1),
+                                 Instruction::I32Shl,
+                                 Instruction::End]];
+
+        module.add_prelude_instructions_to_bodies(0, 1, &vec![2, 3]);
+
+        for (i, f) in module.functions().enumerate() {
+            for (j, inst) in f.instructions().enumerate() {
+                assert_eq!(*inst, expected[i][j]);
+            }
+        }        
+
+    }
+
+    #[test]
+    fn insert_epilogue_instructions() {
+        let file = "./tests/function-names.wasm";
+        let mut module = WasmModule::from_file(file).unwrap();
         let expected = vec![vec![Instruction::GetLocal(1),
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,
@@ -447,11 +482,15 @@ mod test {
                             vec![Instruction::GetLocal(0),
                                  Instruction::F64Const(4602678819172646912),
                                  Instruction::F64Mul,
+                                 Instruction::Call(1),
                                  Instruction::End],
                             vec![Instruction::GetLocal(0),
                                  Instruction::I32Const(1),
                                  Instruction::I32Shl,
+                                 Instruction::Call(1),                                 
                                  Instruction::End]];
+
+        module.add_epilogue_instructions_to_bodies(0, 1, &vec![2, 3]);
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {
@@ -459,7 +498,7 @@ mod test {
             }
         }        
 
-    }
+    }    
 
 
 }

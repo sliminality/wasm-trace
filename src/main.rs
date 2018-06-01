@@ -17,8 +17,8 @@ fn main() {
                 println!("{}", f);
             }
 
-            if let Err(e) =  WasmModule::to_file("a.wasm", module) {
-              panic!(e);
+            if let Err(e) = WasmModule::to_file("a.wasm", module) {
+                panic!(e);
             }
         }
         Err(e) => {

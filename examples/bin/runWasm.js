@@ -12,6 +12,13 @@ const assert = require('assert');
 
 assert('WebAssembly' in global, 'WebAssembly global object not detected');
 
+// Naming for tracer methods.
+const TRACER = {
+  LOG_CALL: '__log_call',
+  EXPOSE_TRACER: '__expose_tracer',
+  EXPOSE_TRACER_LEN: '__expose_tracer_len',
+};
+
 // Compile and run a WebAssembly module, given a path.
 function compileAndRun(bytes, func, ...args) {
   return WebAssembly.compile(bytes)
@@ -30,14 +37,29 @@ function compileAndRun(bytes, func, ...args) {
         `${func} not found in wasm exports: ${Object.keys(exports)}`,
       );
       const result = exports[func](...args);
+      console.log(
+        'Invoking exported function',
+        func,
+        'with arguments',
+        args,
+        '...',
+      );
       return { result, exports };
     });
 }
 
 // Print the contents of a memory region to the console.
-function readMemory(memory, offset, length = 1) {
-  const buffer = new Int32Array(memory.buffer, offset, length);
-  console.log(buffer);
+function getMemory(memory, offset, length = 1) {
+  return new Int32Array(memory.buffer, offset, length);
+}
+
+// Print the contents of the tracer buffer, if available.
+function readBuffer(exports) {
+  if (exports[TRACER.EXPOSE_TRACER] && exports[TRACER.EXPOSE_TRACER_LEN]) {
+    const tracer = exports[TRACER.EXPOSE_TRACER]();
+    const len = exports[TRACER.EXPOSE_TRACER_LEN]();
+    console.log('Calls:', getMemory(exports.memory, tracer, len));
+  }
 }
 
 function validateArgs(_, __, wasmFile, funcName, args) {
@@ -56,12 +78,15 @@ if (module.parent) {
   // Module is being imported, rather than invoked standalone.
   module.exports = {
     compileAndRun,
-    readMemory,
+    getMemory,
   };
   module.exports.default = main;
 } else {
   // Script is invoked from the terminal, compile and log result.
   main(process.argv)
-    .then(({ result }) => result)
-    .then(console.log, console.error);
+    .then(({ result, exports }) => {
+      console.log('Result of function call:', result);
+      readBuffer(exports);
+    })
+    .catch(console.error);
 }

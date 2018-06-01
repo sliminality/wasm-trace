@@ -80,61 +80,6 @@ impl WasmModule {
              })
     }
 
-    // pub fn own_functions(&self) -> impl Iterator<Item = WasmFunction> {     
-    //     // look into this
-    //     let function_count = self.module.functions_space();
-    //     if function_count == 0 {
-    //         return Either::Left(iter::empty::<WasmFunction>());
-    //     }
-
-    //     let imported_count = self.imported_functions_count();
-    //     let own_count = self.own_functions_count();
-    //     assert_eq!(function_count, imported_count + own_count);
-
-    //     Either::Right(
-    //         self.function_types()
-    //         .zip(self.function_bodies())
-    //         .enumerate()
-    //         .map(move |(i, (ty, body))| {
-    //             // Functions from the module function section appear
-    //             // after imported functions, in the index space.
-    //             let id = imported_count + i;
-    //             let name = self.get_function_name(id);
-    //             WasmFunction {
-    //                 id,
-    //                 ty,
-    //                 name,
-    //                 body: Some(body),
-    //                 source: SourceSection::Function,
-    //             }
-    //         })
-    //     )
-    // }   
-
-    /// Iterates over the function index space of the module.
-    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
-    /// wasm-reference-manual/blob/master/WebAssembly.md):
-    ///
-    /// > The function index space begins with an index for each imported
-    /// > function, in the order the imports appear in the Import Section,
-    /// > if present, followed by an index for each function in the Function Section,
-    /// > if present, in the order of that section.
-    // pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
-    //     // check this out
-    //     if self.module.functions_space() == 0 {
-    //         return Either::Left(iter::empty::<WasmFunction>());
-    //     }        
-
-    //     let function_count = self.module.functions_space();
-    //     let imported_count = self.imported_functions_count();
-    //     let own_count = self.own_functions_count();
-    //     assert_eq!(function_count, imported_count + own_count);
-
-    //     let own_functions = self.own_functions();
-    //     let imported_functions = self.imported_functions();
-    //     Either::Right(imported_functions.chain(own_functions))
-    // }
-
     pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
         let function_count = self.module.functions_space();
         if function_count == 0 {
@@ -164,54 +109,58 @@ impl WasmModule {
 
         let imported_functions = self.imported_functions();
         Either::Right(imported_functions.chain(own_functions))
-    }    
-    
-    // TODO: write tests
-    pub fn add_prelude_instructions(&mut self) {
-        println!("meg grasse didn't go to tidal");
-        // 3 corresponds to index of entered_func()
-        let instruction_index = 3;
-        let instruction = Instruction::Call(instruction_index);
-        // we have this list of own_function bodies
-        // we have this mutable list of real bodies [2x the size]
-        // we want to swap old bodies for fresh ones
-        let imports_count = self.imported_functions_count();
-        let bodies = self.module.code_section_mut().unwrap().bodies_mut();
+    }  
 
-        bodies
+    pub fn add_prelude_instructions(&mut self) {
+        // TODO: create helper that analyzes names in function index space
+        //   - to find index of `entered_func()` in an arbitrary program
+        //   - to find indexes of user-defined functions
+
+        // manual call for `examples/enter-exit-count`
+        self.add_prelude_instructions_to_bodies((3, 4), &vec![1,2]);
+    }  
+
+    pub fn add_epilogue_instructions(&mut self) {
+        // manual call for `examples/enter-exit-count`
+        self.add_epilogue_instructions_to_bodies((3, 4), &vec![1,2]);
+    }  
+    
+    /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
+    fn add_prelude_instructions_to_bodies(&mut self, reserved_indexes: (usize, usize), own_funcs: &[usize]) {
+        let instruction = Instruction::Call(reserved_indexes.0 as u32);
+        let imports_count = self.imported_functions_count();
+        self.module.code_section_mut().unwrap().bodies_mut()
             .iter_mut()
             .enumerate()
             .for_each(|(i, body)| {
-                // if i + imports_count != instruction_index as usize {
-                if i == 2 { 
+                let function_index = i + imports_count;
+                if own_funcs.contains(&function_index) &&
+                    function_index != reserved_indexes.0 &&
+                    function_index != reserved_indexes.1 {
                     let insts = body.code_mut().elements_mut();                    
                     insts.insert(0, instruction.clone());
                 }
             });
     }
-    
-    // TODO: write tests
-    // pub fn add_epilogue_instruction(&mut self, inst: Instruction, index: usize) {
-        // let bodies = self.module.code_section_mut().unwrap().bodies_mut();
-        // 
-        // for body in bodies {
-        //     let insts = body.code_mut().elements_mut();
-        //     // ASSUMPTION: can always insert epilogue instruction as 2nd to last inst
-        //     // (right before End instruction)
-        //     let ep_index = insts.len() - 1;
-        //     insts.insert(ep_index, inst.clone());
-        // }
-    // }
 
-    // fn add_instruction(instruction: Instruction, index: usize, func_body: FuncBody) -> FuncBody {
-    //     let locals = func_body.locals().to_owned();
-    //     let elements = func_body.code().elements().to_owned();
-    //     elements.insert(index, instruction);
-    //     FuncBody::new(
-    //         locals, 
-    //         Instructions::new(elements)
-    //     )
-    // }
+    /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
+    fn add_epilogue_instructions_to_bodies(&mut self, reserved_indexes: (usize, usize), own_funcs: &[usize]) {
+        let instruction = Instruction::Call(reserved_indexes.1 as u32);
+        let imports_count = self.imported_functions_count();
+        self.module.code_section_mut().unwrap().bodies_mut()
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, body)| {
+                let function_index = i + imports_count;
+                if own_funcs.contains(&function_index) &&
+                    function_index != reserved_indexes.0 &&
+                    function_index != reserved_indexes.1 {
+                    let insts = body.code_mut().elements_mut();
+                    let ep_index = insts.len() - 1;
+                    insts.insert(ep_index, instruction.clone());
+                }
+            });
+    }    
 
     pub fn print_functions(&self) {
         for f in self.functions() {
@@ -479,4 +428,37 @@ mod test {
             }
         }
     }
+
+    #[test]
+    fn insert_prelude_instruction() {
+        let file = "./tests/function-names.wasm";
+        let module = WasmModule::from_file(file).unwrap();
+        let expected = vec![vec![Instruction::GetLocal(1),
+                                 Instruction::GetLocal(0),
+                                 Instruction::I32Add,
+                                 Instruction::End],
+                            vec![Instruction::GetLocal(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::Call(0),
+                                 Instruction::GetLocal(0),
+                                 Instruction::I32Add,
+                                 Instruction::End],
+                            vec![Instruction::GetLocal(0),
+                                 Instruction::F64Const(4602678819172646912),
+                                 Instruction::F64Mul,
+                                 Instruction::End],
+                            vec![Instruction::GetLocal(0),
+                                 Instruction::I32Const(1),
+                                 Instruction::I32Shl,
+                                 Instruction::End]];
+
+        for (i, f) in module.functions().enumerate() {
+            for (j, inst) in f.instructions().enumerate() {
+                assert_eq!(*inst, expected[i][j]);
+            }
+        }        
+
+    }
+
+
 }

@@ -8,6 +8,9 @@ use parity_wasm::elements::*;
 
 use either::Either;
 
+const ENTERED_FUNC_NAME: &str = "entered_func";
+const EXITED_FUNC_NAME: &str = "exited_func";
+
 #[derive(Debug)]
 pub struct WasmModule {
     module: Module,
@@ -80,6 +83,14 @@ impl WasmModule {
              })
     }
 
+    /// Iterates over the function index space of the module.
+    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
+    /// wasm-reference-manual/blob/master/WebAssembly.md):
+    ///
+    /// > The function index space begins with an index for each imported
+    /// > function, in the order the imports appear in the Import Section,
+    /// > if present, followed by an index for each function in the Function Section,
+    /// > if present, in the order of that section.
     pub fn functions(&self) -> impl Iterator<Item = WasmFunction> {
         let function_count = self.module.functions_space();
         if function_count == 0 {
@@ -109,21 +120,54 @@ impl WasmModule {
 
         let imported_functions = self.imported_functions();
         Either::Right(imported_functions.chain(own_functions))
-    }  
+    }
 
     pub fn add_prelude_instructions(&mut self) {
         // TODO: create helper that analyzes names in function index space
         //   - to find index of `entered_func()` in an arbitrary program
         //   - to find indexes of user-defined functions
 
+        let mut entered_func_id = 0;
+        let mut exited_func_id = 0;
+        let mut own_funcs = vec![];
+
+        for (key, value) in self.function_names.clone().into_iter() {
+            if value == ENTERED_FUNC_NAME {
+                entered_func_id = key;
+            } else if value == EXITED_FUNC_NAME {
+                exited_func_id = key;
+            } else {
+                own_funcs.push(key);
+            }
+        }
+
+        println!("entered_func_id: {}\nexited_func_id: {}", entered_func_id, exited_func_id);
+
         // manual call for `examples/enter-exit-count`
         // these indexes can be found by printing functions
-        self.add_prelude_instructions_to_bodies(7, 8, &vec![1, 2, 3, 4, 5, 6]);
+        self.add_prelude_instructions_to_bodies(entered_func_id, exited_func_id, &own_funcs);
     }  
 
     pub fn add_epilogue_instructions(&mut self) {
         // manual call for `examples/enter-exit-count`
-        self.add_epilogue_instructions_to_bodies(7, 8, &vec![1, 2, 3, 4, 5, 6]);
+
+        let mut entered_func_id = 0;
+        let mut exited_func_id = 0;
+        let mut own_funcs = vec![];
+
+        for (key, value) in self.function_names.clone().into_iter() {
+            if value == ENTERED_FUNC_NAME {
+                entered_func_id = key;
+            } else if value == EXITED_FUNC_NAME {
+                exited_func_id = key;
+            } else {
+                own_funcs.push(key);
+            }
+        }
+
+        println!("entered_func_id: {}\nexited_func_id: {}", entered_func_id, exited_func_id);
+
+        self.add_epilogue_instructions_to_bodies(entered_func_id, exited_func_id, &own_funcs);
     }  
     
     /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
@@ -185,6 +229,22 @@ impl WasmModule {
         }
         names
     }
+
+    // fn own_function_ids(&self) -> Vec<usize> {
+    //     let mut ids = Vec::new();
+    //     for export in self.exports() {
+    //         match export.internal() {
+    //             Internal::Function(id) => {
+    //                 // NOTE(slim): `id` is an index into the function index space,
+    //                 // not the types section or the function section.
+    //                 ids.push(*id as usize);
+    //             }
+    //             // Skip over exports that aren't functions.
+    //             _ => {}
+    //         }
+    //     }
+    //     ids
+    // }    
 
     pub fn get_function_name(&self, id: usize) -> Option<&str> {
         self.function_names.get(&id).map(String::as_str)

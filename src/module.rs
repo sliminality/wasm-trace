@@ -122,11 +122,7 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
 
-    pub fn add_prelude_instructions(&mut self) {
-        // TODO: create helper that analyzes names in function index space
-        //   - to find index of `entered_func()` in an arbitrary program
-        //   - to find indexes of user-defined functions
-
+    pub fn add_tracing_instructions(&mut self) {
         let mut entered_func_id = 0;
         let mut exited_func_id = 0;
         let mut own_funcs = vec![];
@@ -141,38 +137,12 @@ impl WasmModule {
             }
         }
 
-        println!("entered_func_id: {}\nexited_func_id: {}", entered_func_id, exited_func_id);
-
-        // manual call for `examples/enter-exit-count`
-        // these indexes can be found by printing functions
-        self.add_prelude_instructions_to_bodies(entered_func_id, exited_func_id, &own_funcs);
-    }  
-
-    pub fn add_epilogue_instructions(&mut self) {
-        // manual call for `examples/enter-exit-count`
-
-        let mut entered_func_id = 0;
-        let mut exited_func_id = 0;
-        let mut own_funcs = vec![];
-
-        for (key, value) in self.function_names.clone().into_iter() {
-            if value == ENTERED_FUNC_NAME {
-                entered_func_id = key;
-            } else if value == EXITED_FUNC_NAME {
-                exited_func_id = key;
-            } else {
-                own_funcs.push(key);
-            }
-        }
-
-        println!("entered_func_id: {}\nexited_func_id: {}", entered_func_id, exited_func_id);
-
-        self.add_epilogue_instructions_to_bodies(entered_func_id, exited_func_id, &own_funcs);
-    }  
+        self.add_prelude_instructions(entered_func_id, exited_func_id, &own_funcs);
+        self.add_epilogue_instructions(entered_func_id, exited_func_id, &own_funcs);
+    }
     
-    /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
-    fn add_prelude_instructions_to_bodies(&mut self, entered_func_index: usize, exited_func_index: usize, own_funcs: &[usize]) {
-        let instruction = Instruction::Call(entered_func_index as u32);
+    fn add_prelude_instructions(&mut self, entered_func_id: usize, exited_func_id: usize, own_funcs: &[usize]) {
+        let instruction = Instruction::Call(entered_func_id as u32);
         let imports_count = self.imported_functions_count();
         self.module.code_section_mut().unwrap().bodies_mut()
             .iter_mut()
@@ -180,17 +150,16 @@ impl WasmModule {
             .for_each(|(i, body)| {
                 let function_index = i + imports_count;
                 if own_funcs.contains(&function_index) &&
-                    function_index != entered_func_index &&
-                    function_index != exited_func_index {
+                    function_index != entered_func_id &&
+                    function_index != exited_func_id {
                     let insts = body.code_mut().elements_mut();                    
                     insts.insert(0, instruction.clone());
                 }
             });
     }
 
-    /// `reserved_indexes` corresponds to the indexes of `entered_func()` and `exited_func()`
-    fn add_epilogue_instructions_to_bodies(&mut self, entered_func_index: usize, exited_func_index: usize, own_funcs: &[usize]) {
-        let instruction = Instruction::Call(exited_func_index as u32);
+    fn add_epilogue_instructions(&mut self, entered_func_id: usize, exited_func_id: usize, own_funcs: &[usize]) {
+        let instruction = Instruction::Call(exited_func_id as u32);
         let imports_count = self.imported_functions_count();
         self.module.code_section_mut().unwrap().bodies_mut()
             .iter_mut()
@@ -198,8 +167,8 @@ impl WasmModule {
             .for_each(|(i, body)| {
                 let function_index = i + imports_count;
                 if own_funcs.contains(&function_index) &&
-                    function_index != entered_func_index &&
-                    function_index != exited_func_index {
+                    function_index != entered_func_id &&
+                    function_index != exited_func_id {
                     let insts = body.code_mut().elements_mut();
                     let ep_index = insts.len() - 1;
                     insts.insert(ep_index, instruction.clone());
@@ -229,22 +198,6 @@ impl WasmModule {
         }
         names
     }
-
-    // fn own_function_ids(&self) -> Vec<usize> {
-    //     let mut ids = Vec::new();
-    //     for export in self.exports() {
-    //         match export.internal() {
-    //             Internal::Function(id) => {
-    //                 // NOTE(slim): `id` is an index into the function index space,
-    //                 // not the types section or the function section.
-    //                 ids.push(*id as usize);
-    //             }
-    //             // Skip over exports that aren't functions.
-    //             _ => {}
-    //         }
-    //     }
-    //     ids
-    // }    
 
     pub fn get_function_name(&self, id: usize) -> Option<&str> {
         self.function_names.get(&id).map(String::as_str)
@@ -293,11 +246,6 @@ impl WasmModule {
         self.module
             .code_section()
             .map_or(&[], CodeSection::bodies)
-    }
-
-    pub fn function_bodies_mut(&mut self) -> &mut Vec<FuncBody> {
-        // deal with empty vector later
-        self.module.code_section_mut().unwrap().bodies_mut()
     }
  
 }
@@ -515,7 +463,7 @@ mod test {
                                  Instruction::I32Shl,
                                  Instruction::End]];
 
-        module.add_prelude_instructions_to_bodies(0, 1, &vec![2, 3]);
+        module.add_prelude_instructions(0, 1, &vec![2, 3]);
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {
@@ -550,7 +498,7 @@ mod test {
                                  Instruction::Call(1),                                 
                                  Instruction::End]];
 
-        module.add_epilogue_instructions_to_bodies(0, 1, &vec![2, 3]);
+        module.add_epilogue_instructions(0, 1, &vec![2, 3]);
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {

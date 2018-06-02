@@ -36,8 +36,7 @@ pub fn interface_return_exited_func_count() -> usize {
     let res2 = do_more_work(res1);
     // to make sure res2 is GENed & not marked as dead code
     println!("{}", res2);
-    let ret = return_exited_func_count();
-    ret
+    return_exited_func_count()
 }
 
 #[no_mangle]

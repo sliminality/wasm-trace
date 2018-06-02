@@ -122,59 +122,49 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
 
-    pub fn add_tracing_instructions(&mut self) {
-        let mut entered_func_id = 0;
-        let mut exited_func_id = 0;
-        let mut own_funcs = vec![];
+    pub fn instrument_module(&mut self) {
+        let mut log_call = 0;
+        let mut log_return = 0;
 
         for (key, value) in self.function_names.clone().into_iter() {
             if value == ENTERED_FUNC_NAME {
-                entered_func_id = key;
+                log_call = key;
             } else if value == EXITED_FUNC_NAME {
-                exited_func_id = key;
-            } else {
-                own_funcs.push(key);
+                log_return = key;
             }
         }
 
-        self.add_prelude_instructions(entered_func_id, exited_func_id, &own_funcs);
-        self.add_epilogue_instructions(entered_func_id, exited_func_id, &own_funcs);
-    }
-    
-    fn add_prelude_instructions(&mut self, entered_func_id: usize, exited_func_id: usize, own_funcs: &[usize]) {
-        let instruction = Instruction::Call(entered_func_id as u32);
-        let imports_count = self.imported_functions_count();
-        self.module.code_section_mut().unwrap().bodies_mut()
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, body)| {
-                let function_index = i + imports_count;
-                if own_funcs.contains(&function_index) &&
-                    function_index != entered_func_id &&
-                    function_index != exited_func_id {
-                    let insts = body.code_mut().elements_mut();                    
-                    insts.insert(0, instruction.clone());
-                }
-            });
+        self.add_tracing_instructions(log_call, log_return);
     }
 
-    fn add_epilogue_instructions(&mut self, entered_func_id: usize, exited_func_id: usize, own_funcs: &[usize]) {
-        let instruction = Instruction::Call(exited_func_id as u32);
+    fn add_tracing_instructions(&mut self, log_call: usize, log_return: usize) {
         let imports_count = self.imported_functions_count();
-        self.module.code_section_mut().unwrap().bodies_mut()
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, body)| {
-                let function_index = i + imports_count;
-                if own_funcs.contains(&function_index) &&
-                    function_index != entered_func_id &&
-                    function_index != exited_func_id {
-                    let insts = body.code_mut().elements_mut();
-                    let ep_index = insts.len() - 1;
-                    insts.insert(ep_index, instruction.clone());
+        // new func for this
+        if let Some(section) = self.module.code_section_mut() {
+            for (i, body) in section.bodies_mut().iter_mut().enumerate() {
+                let id = i + imports_count;
+                // just look at exported functions for now
+                if id != log_call && id != log_return && self.function_names.contains_key(&id) {
+                    WasmModule::instrument_function(body, log_call, log_return);
                 }
-            });
-    }    
+            }
+        }
+    }
+
+    fn instrument_function(body: &mut FuncBody, log_call: usize, log_return: usize) {
+        let log_call_instruction = Instruction::Call(log_call as u32);
+        let log_return_instruction = Instruction::Call(log_return as u32);
+
+        let insts = body.code_mut().elements_mut();
+        // add prelude instruction    
+        insts.insert(0, log_call_instruction);
+        // needs to put Instruction::Call right before Instruction::End
+        // as the second to last instruction
+        // putting it at size - 1 puts at the pos of the last element & pushes  the last element back
+        // e.g. to insert 3 second to last in [0, 1, 2] we put it at index 2 (size - 1)
+        let epilogue_index = insts.len() - 1;
+        insts.insert(epilogue_index, log_return_instruction);        
+    } 
 
     pub fn print_functions(&self) {
         for f in self.functions() {
@@ -246,6 +236,13 @@ impl WasmModule {
         self.module
             .code_section()
             .map_or(&[], CodeSection::bodies)
+    }
+
+    pub fn function_bodies_mut(&mut self) -> impl Iterator<Item = &mut FuncBody> {
+        self.module
+            .code_section_mut()
+            .map_or(Either::Left(iter::empty()),
+            |sec| Either::Right(sec.bodies_mut().iter_mut()))
     }
  
 }
@@ -439,10 +436,11 @@ mod test {
     }
 
     #[test]
-    fn insert_prelude_instructions() {
+    fn insert_tracing_instructions() {
+        // all exported functions in this .wasm
         let file = "./tests/function-names.wasm";
         let mut module = WasmModule::from_file(file).unwrap();
-        let expected = vec![vec![Instruction::GetLocal(1),
+        let before_insertion = vec![vec![Instruction::GetLocal(1),
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,
                                  Instruction::End],
@@ -452,32 +450,16 @@ mod test {
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,
                                  Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
+                            vec![Instruction::GetLocal(0),
                                  Instruction::F64Const(4602678819172646912),
                                  Instruction::F64Mul,
                                  Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
+                            vec![Instruction::GetLocal(0),
                                  Instruction::I32Const(1),
                                  Instruction::I32Shl,
                                  Instruction::End]];
-
-        module.add_prelude_instructions(0, 1, &vec![2, 3]);
-
-        for (i, f) in module.functions().enumerate() {
-            for (j, inst) in f.instructions().enumerate() {
-                assert_eq!(*inst, expected[i][j]);
-            }
-        }        
-
-    }
-
-    #[test]
-    fn insert_epilogue_instructions() {
-        let file = "./tests/function-names.wasm";
-        let mut module = WasmModule::from_file(file).unwrap();
-        let expected = vec![vec![Instruction::GetLocal(1),
+        
+        let after_insertion = vec![vec![Instruction::GetLocal(1),
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,
                                  Instruction::End],
@@ -487,26 +469,34 @@ mod test {
                                  Instruction::GetLocal(0),
                                  Instruction::I32Add,
                                  Instruction::End],
-                            vec![Instruction::GetLocal(0),
+                            vec![Instruction::Call(0),
+                                 Instruction::GetLocal(0),
                                  Instruction::F64Const(4602678819172646912),
                                  Instruction::F64Mul,
                                  Instruction::Call(1),
                                  Instruction::End],
-                            vec![Instruction::GetLocal(0),
+                            vec![Instruction::Call(0),
+                                 Instruction::GetLocal(0),
                                  Instruction::I32Const(1),
                                  Instruction::I32Shl,
-                                 Instruction::Call(1),                                 
+                                 Instruction::Call(1),
                                  Instruction::End]];
-
-        module.add_epilogue_instructions(0, 1, &vec![2, 3]);
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {
-                assert_eq!(*inst, expected[i][j]);
+                assert_eq!(*inst, before_insertion[i][j]);
             }
-        }        
+        }                                 
 
-    }    
+        module.add_tracing_instructions(0, 1);
+
+        for (i, f) in module.functions().enumerate() {
+            for (j, inst) in f.instructions().enumerate() {
+                assert_eq!(*inst, after_insertion[i][j]);
+            }
+        }
+
+    }
 
 
 }

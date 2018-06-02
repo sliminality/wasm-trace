@@ -40,5 +40,5 @@ node:
 	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION2) $(ARGS)
 
 output:
-	node ../bin/runWasm.js a.wasm $(FUNCTION1) $(ARGS)
-	node ../bin/runWasm.js a.wasm $(FUNCTION2) $(ARGS)
+	node ../bin/runWasm.js output.wasm $(FUNCTION1) $(ARGS)
+	node ../bin/runWasm.js output.wasm $(FUNCTION2) $(ARGS)

@@ -237,13 +237,6 @@ impl WasmModule {
             .code_section()
             .map_or(&[], CodeSection::bodies)
     }
-
-    pub fn function_bodies_mut(&mut self) -> impl Iterator<Item = &mut FuncBody> {
-        self.module
-            .code_section_mut()
-            .map_or(Either::Left(iter::empty()),
-            |sec| Either::Right(sec.bodies_mut().iter_mut()))
-    }
  
 }
 

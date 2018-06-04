@@ -1,6 +1,9 @@
 EXAMPLE = function-calls
 TARGET_DIR = ../../target/wasm32-unknown-unknown/debug/examples
 
+# Modified .wasm binary outputted by main.
+OUTPUT = output
+
 # wasm function name and arguments
 FUNCTION = double_subtract5_add1
 ARGS = 10
@@ -12,6 +15,8 @@ all:
 	make gc
 	make wat
 	make node
+	cargo run $(EXAMPLE).wasm
+	make node EXAMPLE=$(OUTPUT)
 
 clean:
 	rm -f *.wasm *.wat *.wast

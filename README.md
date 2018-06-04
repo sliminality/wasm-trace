@@ -9,35 +9,23 @@ Based on an [idea](https://gist.github.com/fitzgen/34073d61f2c358f2b35038fa263b7
 List the instructions in each module function:
 
 ```sh
-> cd ~/git/wasm-trace
-> cargo run test/function-names.wasm
-    Finished dev [unoptimized + debuginfo] target(s) in 0.06s
-     Running `target/debug/wasm-trace test/function-names.wasm`
-#0 _Z3addii : i32 i32 -> i32
-	GetLocal(1)
-	GetLocal(0)
-	I32Add
-	End
+> cd ~/git/wasm-trace/examples/function-calls
+> make
+# node ../bin/runWasm.js function-calls.wasm double_subtract5_add1 10
+Invoking exported function double_subtract5_add1 with arguments [ 10 ] ...
+Result of function call: 16
+Calls: Int32Array [  ]
 
-#1 _Z4add1i : i32 -> i32
-	GetLocal(0)
-	GetLocal(0)
-	Call(0)
-	GetLocal(0)
-	I32Add
-	End
+# cargo run function-calls.wasm
+    Finished dev [unoptimized + debuginfo] target(s) in 0.02s
+     Running `/Users/sarah/git/wasm-trace/target/debug/wasm-trace function-calls.wasm`
+Modified wasm module -> output.wasm
 
-#2 _Z5halved : f64 -> f64
-	GetLocal(0)
-	F64Const(4602678819172646912)
-	F64Mul
-	End
+# node ../bin/runWasm.js output.wasm double_subtract5_add1 10
 
-#3 _Z7doubleri : i32 -> i32
-	GetLocal(0)
-	I32Const(1)
-	I32Shl
-	End
+Invoking exported function double_subtract5_add1 with arguments [ 10 ] ...
+Result of function call: 16
+Calls: Int32Array [ 3, 4, 4, 4, 5 ]  # indices of called functions
 ```
 
 ## Requirements

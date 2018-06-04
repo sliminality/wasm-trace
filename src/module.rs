@@ -7,9 +7,7 @@ use std::collections::HashMap;
 use parity_wasm::elements::*;
 
 use either::Either;
-
-const ENTERED_FUNC_NAME: &str = "entered_func";
-const EXITED_FUNC_NAME: &str = "exited_func";
+use tracer::{EntryKind, EXPOSE_TRACER, EXPOSE_TRACER_LEN, LOG_CALL};
 
 #[derive(Debug)]
 pub struct WasmModule {
@@ -122,49 +120,82 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
 
+    /// Instrument a .wasm module by adding a prologue and epilogue to each function.
+    /// For now, only add tracing calls to exported functions.
     pub fn instrument_module(&mut self) {
         let mut log_call = 0;
-        let mut log_return = 0;
 
         for (key, value) in self.function_names.clone().into_iter() {
-            if value == ENTERED_FUNC_NAME {
+            if value == LOG_CALL {
                 log_call = key;
-            } else if value == EXITED_FUNC_NAME {
-                log_return = key;
             }
         }
 
-        self.add_tracing_instructions(log_call, log_return);
+        self.add_tracing_instructions(log_call);
     }
 
-    fn add_tracing_instructions(&mut self, log_call: usize, log_return: usize) {
+    fn add_tracing_instructions(&mut self, log_call: usize) {
         let imports_count = self.imported_functions_count();
-        // new func for this
         if let Some(section) = self.module.code_section_mut() {
             for (i, body) in section.bodies_mut().iter_mut().enumerate() {
                 let id = i + imports_count;
-                // just look at exported functions for now
-                if id != log_call && id != log_return && self.function_names.contains_key(&id) {
-                    WasmModule::instrument_function(body, log_call, log_return);
+                // TODO: Refactor this when we switch to using the names section.
+                match self.function_names.get(&id) {
+                    None => {
+                        // Only instrument exported functions for now.
+                        continue;
+                    }
+                    Some(name) if name == EXPOSE_TRACER || name == EXPOSE_TRACER_LEN ||
+                                  name == LOG_CALL => {
+                        // Don't instrument functions that are part of tracing, or we'll get an infinite loop.
+                        continue;
+                    }
+                    _ => {
+                        let prologue = vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                                            Instruction::I32Const(id as i32),
+                                            Instruction::Call(log_call as u32)];
+
+                        let void_return_value = -1;
+                        let epilogue = vec![Instruction::I32Const(EntryKind::FunctionReturnVoid as
+                                                                  i32),
+                                            Instruction::I32Const(void_return_value as i32),
+                                            Instruction::Call(log_call as u32)];
+
+                        // If the function has a return value, the penultimate instruction will be a
+                        // `get_local($return_value_index)`.
+                        // let insts = body.code().elements();
+                        // // Ensure a penultimate instruction exists.
+                        // if insts.len() >= 2 {
+                        //     let penultimate_index = insts.len() - 2;
+                        //     if let Some(Instruction::GetLocal(ret_val_id)) =
+                        //         insts.get(penultimate_index) {}
+                        // }
+
+                        WasmModule::instrument_function(body, prologue, epilogue);
+                    }
                 }
             }
         }
     }
 
-    fn instrument_function(body: &mut FuncBody, log_call: usize, log_return: usize) {
-        let log_call_instruction = Instruction::Call(log_call as u32);
-        let log_return_instruction = Instruction::Call(log_return as u32);
-
+    fn instrument_function(body: &mut FuncBody,
+                           prologue: Vec<Instruction>,
+                           epilogue: Vec<Instruction>) {
         let insts = body.code_mut().elements_mut();
-        // add prelude instruction    
-        insts.insert(0, log_call_instruction);
+
+        for (i, inst) in prologue.into_iter().enumerate() {
+            insts.insert(i, inst);
+        }
+
         // needs to put Instruction::Call right before Instruction::End
         // as the second to last instruction
         // putting it at size - 1 puts at the pos of the last element & pushes  the last element back
         // e.g. to insert 3 second to last in [0, 1, 2] we put it at index 2 (size - 1)
-        let epilogue_index = insts.len() - 1;
-        insts.insert(epilogue_index, log_return_instruction);        
-    } 
+        for inst in epilogue.into_iter() {
+            let i = insts.len() - 1;
+            insts.insert(i, inst);
+        }
+    }
 
     pub fn print_functions(&self) {
         for f in self.functions() {
@@ -237,7 +268,6 @@ impl WasmModule {
             .code_section()
             .map_or(&[], CodeSection::bodies)
     }
- 
 }
 
 #[derive(Debug, PartialEq)]
@@ -434,54 +464,85 @@ mod test {
         let file = "./tests/function-names.wasm";
         let mut module = WasmModule::from_file(file).unwrap();
         let before_insertion = vec![vec![Instruction::GetLocal(1),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::F64Const(4602678819172646912),
-                                 Instruction::F64Mul,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::I32Const(1),
-                                 Instruction::I32Shl,
-                                 Instruction::End]];
-        
-        let after_insertion = vec![vec![Instruction::GetLocal(1),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::F64Const(4602678819172646912),
-                                 Instruction::F64Mul,
-                                 Instruction::Call(1),
-                                 Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Const(1),
-                                 Instruction::I32Shl,
-                                 Instruction::Call(1),
-                                 Instruction::End]];
+                                         Instruction::GetLocal(0),
+                                         Instruction::I32Add,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::GetLocal(0),
+                                         Instruction::Call(0),
+                                         Instruction::GetLocal(0),
+                                         Instruction::I32Add,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::F64Const(4602678819172646912),
+                                         Instruction::F64Mul,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::I32Const(1),
+                                         Instruction::I32Shl,
+                                         Instruction::End]];
+
+        // TODO: Clean this up to make it clearer.
+        let mock_log_call: u32 = 999;
+        let return_value: i32 = -1;
+        let after_insertion = vec![vec![Instruction::I32Const(0),
+                                        Instruction::I32Const(0),
+                                        Instruction::Call(mock_log_call),
+
+                                        Instruction::GetLocal(1),
+                                        Instruction::GetLocal(0),
+                                        Instruction::I32Add,
+
+                                        Instruction::I32Const(1),
+                                        Instruction::I32Const(return_value),
+                                        Instruction::Call(mock_log_call),
+                                        Instruction::End],
+                                   vec![Instruction::I32Const(0),
+                                        Instruction::I32Const(1),
+                                        Instruction::Call(mock_log_call),
+
+                                        Instruction::GetLocal(0),
+                                        Instruction::GetLocal(0),
+                                        Instruction::Call(0),
+                                        Instruction::GetLocal(0),
+                                        Instruction::I32Add,
+
+                                        Instruction::I32Const(1),
+                                        Instruction::I32Const(return_value),
+                                        Instruction::Call(mock_log_call),
+                                        Instruction::End],
+                                   vec![Instruction::I32Const(0),
+                                        Instruction::I32Const(2),
+                                        Instruction::Call(mock_log_call),
+
+                                        Instruction::GetLocal(0),
+                                        Instruction::F64Const(4602678819172646912),
+                                        Instruction::F64Mul,
+
+                                        Instruction::I32Const(1),
+                                        Instruction::I32Const(return_value),
+                                        Instruction::Call(mock_log_call),
+                                        Instruction::End],
+                                   vec![Instruction::I32Const(0),
+                                        Instruction::I32Const(3),
+                                        Instruction::Call(mock_log_call),
+
+                                        Instruction::GetLocal(0),
+                                        Instruction::I32Const(1),
+                                        Instruction::I32Shl,
+
+                                        Instruction::I32Const(1),
+                                        Instruction::I32Const(return_value),
+                                        Instruction::Call(mock_log_call),
+                                        Instruction::End]];
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {
                 assert_eq!(*inst, before_insertion[i][j]);
             }
-        }                                 
+        }
 
-        module.add_tracing_instructions(0, 1);
+        module.add_tracing_instructions(mock_log_call as usize);
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {

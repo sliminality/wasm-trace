@@ -1,5 +1,9 @@
 use ring_buffer::RingBuffer;
 
+pub static LOG_CALL: &str = "__log_call";
+pub static EXPOSE_TRACER: &str = "__expose_tracer";
+pub static EXPOSE_TRACER_LEN: &str = "__expose_tracer_len";
+
 /// Wrapper around the ring buffer for recording function calls.
 #[derive(Debug)]
 pub struct Tracer(RingBuffer<u32>);
@@ -22,6 +26,45 @@ impl Tracer {
     }
 }
 
+#[macro_export]
+/// Provides dependencies for the Tracer.
+/// Designed to be imported into a user's module at the root level.
+macro_rules! tracer_dependencies {
+    () => {
+        #[macro_use] extern crate lazy_static;
+        use ::std::sync::Mutex;
+    }
+}
+
+#[macro_export]
+/// Bootstraps a Tracer into the module root, allowing our reinstrumentation to
+/// write to the ring buffer.
+macro_rules! tracer_bootstrap {
+    () => {
+        lazy_static! {
+            static ref TRACER: Mutex<Tracer> = Mutex::new(Tracer::new());
+        }
+
+        #[allow(private_no_mangle_fns)]
+        #[no_mangle]
+        pub fn __log_call(id: u32) {
+            TRACER.lock().unwrap().log(id);
+        }
+
+        #[allow(private_no_mangle_fns)]
+        #[no_mangle]
+        pub fn __expose_tracer() -> *const u32 {
+            TRACER.lock().unwrap().as_ptr()
+        }
+
+        #[allow(private_no_mangle_fns)]
+        #[no_mangle]
+        pub fn __expose_tracer_len() -> u32 {
+            TRACER.lock().unwrap().len() as u32
+        }
+    }
+}
+
 #[cfg(test)]
 mod test_tracer {
     use super::Tracer;
@@ -40,5 +83,12 @@ mod test_tracer {
                 assert_eq!(*ptr.offset(i as isize), values[i]);
             }
         }
+    }
+
+    #[test]
+    fn bootstrap() {
+        use std::sync::Mutex;
+        tracer_bootstrap!();
+        assert_eq!(__expose_tracer_len(), 0);
     }
 }

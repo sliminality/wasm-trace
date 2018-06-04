@@ -5,6 +5,7 @@ authors = ["Sarah Lim <sarah@sarahlim.com>"]
 
 [dependencies]
 parity-wasm = "0.31"
+lazy_static = "1.0.1"
 
 [dev-dependencies]
 parity-wasm = "0.31"

@@ -5,8 +5,8 @@ TARGET_DIR = ../../target/wasm32-unknown-unknown/debug/examples
 OUTPUT = output
 
 # wasm function name and arguments
-FUNCTION = double_subtract5_add1
-ARGS = 10
+FUNCTION = do_stuff
+ARGS = 4
 
 # Compile `test.rs` and execute in Node.
 all:

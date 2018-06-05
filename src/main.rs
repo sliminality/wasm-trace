@@ -7,15 +7,16 @@ fn main() {
     let path = env::args().nth(1).expect("USAGE: cargo run module.wasm");
     match WasmModule::from_file(path) {
         Ok(mut module) => {
-            module.instrument_module();
-            if let Err(e) =  WasmModule::to_file("output.wasm", module) {
-                panic!(e);
-            } else {
-                println!("Modified wasm module -> output.wasm");
-            }           
+            if let Err(e) = module.instrument_module() {
+                panic!("Error instrumenting module: {}", e);
+            }
+            if let Err(e) = WasmModule::to_file("output.wasm", module) {
+                panic!("Error writing instrumented module: {}", e);
+            }
+            println!("Modified wasm module -> output.wasm");
         }
         Err(e) => {
-            panic!(e);
+            panic!("Error initializing module: {}", e);
         }
     }
 }

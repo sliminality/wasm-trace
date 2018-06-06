@@ -19,6 +19,12 @@ const TRACER = {
   EXPOSE_TRACER_LEN: '__expose_tracer_len',
 };
 
+const ENTRY_KIND = {
+  FUNCTION_CALL: 0,
+  FUNCTION_RETURN_VOID: 1,
+  FUNCTION_RETURN_VALUE: 2,
+};
+
 // Compile and run a WebAssembly module, given a path.
 function compileAndRun(bytes, func, ...args) {
   return WebAssembly.compile(bytes)
@@ -48,17 +54,53 @@ function compileAndRun(bytes, func, ...args) {
     });
 }
 
-// Print the contents of a memory region to the console.
 function getMemory(memory, offset, length = 1) {
   return new Int32Array(memory.buffer, offset, length);
 }
+
+function chunk(size, arr = []) {
+  const result = [];
+  let nextChunk = [];
+  for (let i = 0; i < arr.length; i += 1) {
+    if (i > 0 && i % size === 0) {
+      result.push(nextChunk);
+      nextChunk = [];
+    }
+    nextChunk.push(arr[i]);
+  }
+  if (nextChunk.length) {
+    result.push(nextChunk);
+  }
+  return result;
+}
+
+assert.deepStrictEqual(chunk(2, [1, 2, 'a', 'z', true, false, 1]), [
+  [1, 2],
+  ['a', 'z'],
+  [true, false],
+  [1],
+]);
 
 // Print the contents of the tracer buffer, if available.
 function readBuffer(exports) {
   if (exports[TRACER.EXPOSE_TRACER] && exports[TRACER.EXPOSE_TRACER_LEN]) {
     const tracer = exports[TRACER.EXPOSE_TRACER]();
     const len = exports[TRACER.EXPOSE_TRACER_LEN]();
-    console.log('Calls:', getMemory(exports.memory, tracer, len));
+    const callBuffer = getMemory(exports.memory, tracer, len);
+    const stack = [];
+
+    const indent = () => '  | '.repeat(stack.length);
+
+    for (const [kind, data] of chunk(2, callBuffer)) {
+      if (kind === ENTRY_KIND.FUNCTION_CALL) {
+        console.log(indent(), 'call function', data);
+        stack.push(data);
+      } else {
+        const callee = stack.pop();
+        const value = kind === ENTRY_KIND.FUNCTION_RETURN_VALUE ? [data] : [];
+        console.log(indent(), 'return', ...value, 'from', callee);
+      }
+    }
   }
 }
 

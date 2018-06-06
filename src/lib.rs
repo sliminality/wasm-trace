@@ -9,3 +9,4 @@ pub mod tracer;
 #[macro_use]
 extern crate lazy_static;
 extern crate parity_wasm;
+extern crate itertools;

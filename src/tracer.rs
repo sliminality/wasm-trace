@@ -4,20 +4,31 @@ pub static LOG_CALL: &str = "__log_call";
 pub static EXPOSE_TRACER: &str = "__expose_tracer";
 pub static EXPOSE_TRACER_LEN: &str = "__expose_tracer_len";
 
+static TRACER_LOG_ENTRIES: usize = 1024;
+
+#[repr(i32)]
+#[derive(Debug)]
+pub enum EntryKind {
+    FunctionCall = 0,
+    FunctionReturnVoid = 1,
+    FunctionReturnValue = 2,
+}
+
 /// Wrapper around the ring buffer for recording function calls.
 #[derive(Debug)]
-pub struct Tracer(RingBuffer<u32>);
+pub struct Tracer(RingBuffer<i32>);
 
 impl Tracer {
     pub fn new() -> Self {
-        Tracer(RingBuffer::new(1024))
+        Tracer(RingBuffer::new(TRACER_LOG_ENTRIES * 2))
     }
 
-    pub fn log(&mut self, data: u32) {
+    pub fn log(&mut self, kind: i32, data: i32) {
+        self.0.enqueue(kind as i32);
         self.0.enqueue(data);
     }
 
-    pub fn as_ptr(&self) -> *const u32 {
+    pub fn as_ptr(&self) -> *const i32 {
         self.0.as_slice().as_ptr()
     }
 
@@ -47,13 +58,13 @@ macro_rules! tracer_bootstrap {
 
         #[allow(private_no_mangle_fns)]
         #[no_mangle]
-        pub fn __log_call(id: u32) {
-            TRACER.lock().unwrap().log(id);
+        pub fn __log_call(id: i32, data: i32) {
+            TRACER.lock().unwrap().log(id, data);
         }
 
         #[allow(private_no_mangle_fns)]
         #[no_mangle]
-        pub fn __expose_tracer() -> *const u32 {
+        pub fn __expose_tracer() -> *const i32 {
             TRACER.lock().unwrap().as_ptr()
         }
 
@@ -67,20 +78,28 @@ macro_rules! tracer_bootstrap {
 
 #[cfg(test)]
 mod test_tracer {
-    use super::Tracer;
+    use itertools::Itertools;
+    use super::{Tracer, EntryKind};
 
     #[test]
     fn get_ptr() {
         let mut tracer = Tracer::new();
-        let values: [u32; 3] = [4, 1, 2];
-        for &x in values.iter() {
-            tracer.log(x);
+        let kinds = vec![EntryKind::FunctionCall as i32,
+                         EntryKind::FunctionCall as i32,
+                         EntryKind::FunctionCall as i32];
+        let values = vec![4, 1, 2];
+        for (&kind, &x) in kinds.clone().iter().zip(values.clone().iter()) {
+            tracer.log(kind, x);
         }
+
         let ptr = tracer.as_ptr();
         let len = tracer.len();
+        let mut expected_values = kinds.iter().interleave(values.iter());
+
         unsafe {
             for i in 0..len {
-                assert_eq!(*ptr.offset(i as isize), values[i]);
+                let &expected = expected_values.next().unwrap();
+                assert_eq!(*ptr.offset(i as isize), expected);
             }
         }
     }

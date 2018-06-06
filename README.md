@@ -4,40 +4,108 @@
 
 Based on an [idea](https://gist.github.com/fitzgen/34073d61f2c358f2b35038fa263b74a3) by [Nick Fitzgerald](https://github.com/fitzgen) from Mozilla.
 
-## Current status
+## Current functionality
 
-List the instructions in each module function:
+Goal: P1 functionality by project handin.
 
+- Instrument functions
+  - [x] (P0) Instrument exported functions
+  - [ ] (P1) Instrument the whole function section, including standard library functions, *except* for the transitive closure of the functions called by the tracer
+  - [ ] Filter function names by regex
+- Calls
+  - [x] (P0) Log that a call happened
+  - [ ] (P2) Log arguments to calls
+  - [ ] (P3) Capture call frequency
+- Returns
+  - [x] (P0) Log that a return happened
+  - [x] (P1) Log returned value if `i32`
+  - [ ] (P1) Log returned value if wasm-supported type
+    - Instrumentation is done, but need to update JavaScript and tracer to support 64 bits.
+  - [ ] (P2) Log returned value if Rust type (via pointer)
+- UI/UX
+  - [x] (P0) Display function ids
+  - [ ] (P1) Display formatted names
+  - [x] (P0) Bootstrap the tracer using macros
+  - [ ] (P2) Bootstrap the tracer using `extern crate wasm_trace;` alone
+  - [ ] (P2) Allow users to specify ring buffer size
+  - [ ] (P3) Display histogram of call frequency
+
+## Usage
+
+Given the following Rust program:
+
+```rust
+#[macro_use]
+extern crate wasm_trace;
+
+use wasm_trace::tracer::Tracer;
+
+tracer_dependencies!();
+tracer_bootstrap!();
+
+#[no_mangle]
+pub extern "C" fn do_stuff(x: i32) -> i32 {
+    println!("{}", double(x) + double(x));
+    println!("{}", factorial(x as u32));
+    let result = double(x) + negate(5) + 1;
+    void();
+    return result;
+}
+
+#[no_mangle]
+pub fn double(x: i32) -> i32 {
+    return x * 2;
+}
+
+#[no_mangle]
+pub fn negate(x: i32) -> i32 {
+    return -1 * x;
+}
+
+#[no_mangle]
+pub fn void() {
+    println!("No return value here!");
+}
+
+#[no_mangle]
+pub fn factorial(n: u32) -> u32 {
+    if n == 1 || n == 0 {
+        1
+    } else {
+        n * factorial(n - 1)
+    }
+}
+```
+
+We can pass the `.wasm` binary to the program:
 ```sh
-> cd ~/git/wasm-trace
-> cargo run test/function-names.wasm
-    Finished dev [unoptimized + debuginfo] target(s) in 0.06s
-     Running `target/debug/wasm-trace test/function-names.wasm`
-#0 _Z3addii : i32 i32 -> i32
-	GetLocal(1)
-	GetLocal(0)
-	I32Add
-	End
-
-#1 _Z4add1i : i32 -> i32
-	GetLocal(0)
-	GetLocal(0)
-	Call(0)
-	GetLocal(0)
-	I32Add
-	End
-
-#2 _Z5halved : f64 -> f64
-	GetLocal(0)
-	F64Const(4602678819172646912)
-	F64Mul
-	End
-
-#3 _Z7doubleri : i32 -> i32
-	GetLocal(0)
-	I32Const(1)
-	I32Shl
-	End
+> cargo run function-calls.wasm
+```
+and evaluate the resulting `output.wasm` in Node. Specifically, we'll invoke `do_stuff(4)`:
+```sh
+> node ../bin/runWasm.js function-calls.wasm do_stuff 4
+Invoking exported function do_stuff with arguments [ 4 ] ...
+Result of function call: 4
+ call function 3
+  |  call function 4
+  |  return 8 from 4
+  |  call function 4
+  |  return 8 from 4
+  |  call function 5
+  |   |  call function 5
+  |   |   |  call function 5
+  |   |   |   |  call function 5
+  |   |   |   |  return 1 from 5
+  |   |   |  return 2 from 5
+  |   |  return 6 from 5
+  |  return 24 from 5
+  |  call function 4
+  |  return 8 from 4
+  |  call function 6
+  |  return -5 from 6
+  |  call function 7
+  |  return from 7
+ return 4 from 3
 ```
 
 ## Requirements

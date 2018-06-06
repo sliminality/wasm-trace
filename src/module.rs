@@ -3,13 +3,15 @@
 use std::path::Path;
 use std::fmt;
 use std::iter;
+use std::{u32, i32};
 use std::collections::HashMap;
 use parity_wasm::elements::*;
+use itertools::Itertools;
 
 use either::Either;
+use tracer::{EntryKind, EXPOSE_TRACER, EXPOSE_TRACER_LEN, LOG_CALL};
 
-const ENTERED_FUNC_NAME: &str = "entered_func";
-const EXITED_FUNC_NAME: &str = "exited_func";
+static VOID_VALUE_PLACEHOLDER: i32 = i32::MAX;
 
 #[derive(Debug)]
 pub struct WasmModule {
@@ -20,7 +22,11 @@ pub struct WasmModule {
 impl WasmModule {
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let module = deserialize_file(path)?;
-        let mut result = WasmModule::new(module);
+        let mut result = WasmModule {
+            module,
+            function_names: HashMap::new(),
+        };
+
         result.function_names = result.exported_function_names();
 
         Ok(result)
@@ -28,13 +34,6 @@ impl WasmModule {
 
     pub fn to_file<P: AsRef<Path>>(path: P, wasm_module: WasmModule) -> Result<(), Error> {
         serialize_to_file(path, wasm_module.module)
-    }
-
-    fn new(module: Module) -> Self {
-        WasmModule {
-            module,
-            function_names: HashMap::new(),
-        }
     }
 
     pub fn imports(&self) -> impl Iterator<Item = &ImportEntry> {
@@ -122,49 +121,135 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
 
-    pub fn instrument_module(&mut self) {
-        let mut log_call = 0;
-        let mut log_return = 0;
+    /// Instrument a .wasm module by adding a prologue and epilogue to each function.
+    /// For now, only add tracing calls to exported functions.
+    pub fn instrument_module(&mut self) -> Result<(), Error> {
+        let logger = self.function_names
+            .iter()
+            .find(|(_, name)| *name == LOG_CALL)
+            .map(|(&id, _)| id);
 
-        for (key, value) in self.function_names.clone().into_iter() {
-            if value == ENTERED_FUNC_NAME {
-                log_call = key;
-            } else if value == EXITED_FUNC_NAME {
-                log_return = key;
-            }
+        if logger.is_none() {
+            return Err(Error::Other("Could not find tracing functions in module exports"));
         }
 
-        self.add_tracing_instructions(log_call, log_return);
+        let mut working = CodeSection::with_bodies(self.function_bodies().to_vec());
+        self.add_tracing_instructions(logger.unwrap(), &mut working)?;
+
+        // Replace the module code section with the instrumented bodies.
+        if let Some(current_section) = self.module.code_section_mut() {
+            *current_section = working;
+        } else {
+            return Err(Error::Other("Could not replace code section with instrumented version"));
+        }
+
+        return Ok(());
     }
 
-    fn add_tracing_instructions(&mut self, log_call: usize, log_return: usize) {
+    fn add_tracing_instructions(&self,
+                                logger_id: usize,
+                                working: &mut CodeSection)
+                                -> Result<(), Error> {
         let imports_count = self.imported_functions_count();
-        // new func for this
-        if let Some(section) = self.module.code_section_mut() {
-            for (i, body) in section.bodies_mut().iter_mut().enumerate() {
+        let to_instrument = working
+            .bodies_mut()
+            .iter_mut()
+            .zip(self.functions().skip(imports_count))
+            .enumerate()
+            .filter_map(|(i, (mut_body, func))| {
                 let id = i + imports_count;
-                // just look at exported functions for now
-                if id != log_call && id != log_return && self.function_names.contains_key(&id) {
-                    WasmModule::instrument_function(body, log_call, log_return);
+                // Only instrument exported functions for now.
+                match self.function_names.get(&id) {
+                    None => None,
+                    Some(name) if name == EXPOSE_TRACER || name == EXPOSE_TRACER_LEN ||
+                                  name == LOG_CALL => None,
+                    _ => {
+                        let return_ty = match func.ty {
+                            Type::Function(ty) => ty.return_type(),
+                        };
+                        Some((id, return_ty, mut_body))
+                    }
                 }
-            }
+            });
+
+        for (id, return_ty, mut_body) in to_instrument {
+            self.instrument_function(logger_id, id, return_ty, mut_body);
         }
+
+        Ok(())
     }
 
-    fn instrument_function(body: &mut FuncBody, log_call: usize, log_return: usize) {
-        let log_call_instruction = Instruction::Call(log_call as u32);
-        let log_return_instruction = Instruction::Call(log_return as u32);
+    fn instrument_function(&self,
+                           logger_id: usize,
+                           id: usize,
+                           return_ty: Option<ValueType>,
+                           mut_body: &mut FuncBody) {
+        let call_logger = Instruction::Call(logger_id as u32);
 
-        let insts = body.code_mut().elements_mut();
-        // add prelude instruction    
-        insts.insert(0, log_call_instruction);
-        // needs to put Instruction::Call right before Instruction::End
-        // as the second to last instruction
-        // putting it at size - 1 puts at the pos of the last element & pushes  the last element back
-        // e.g. to insert 3 second to last in [0, 1, 2] we put it at index 2 (size - 1)
-        let epilogue_index = insts.len() - 1;
-        insts.insert(epilogue_index, log_return_instruction);        
-    } 
+        // Record that a function call occurred, and the id of the callee.
+        let prologue = vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                            Instruction::I32Const(id as i32),
+                            call_logger.clone()];
+
+        // Record returning from the function.
+        let mut epilogue = match return_ty {
+            // If the function has a return type, we need to capture the returned value from
+            // the top of the stack.
+            Some(ty) => {
+                // Create a new local to store the return value.
+                let return_local = Local::new(1, ty);
+                let return_local_id: u32 = mut_body.locals().iter().map(|loc| loc.count()).sum();
+                mut_body.locals_mut().push(return_local);
+
+                // Capture the top of the stack into our local and return that.
+                vec![Instruction::TeeLocal(return_local_id),
+                     Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
+                     Instruction::GetLocal(return_local_id),
+                     call_logger.clone()]
+            }
+            // If the function has no return value, we simply record that the return
+            // is void, and use a placeholder value for the data.
+            None => {
+                vec![Instruction::I32Const(EntryKind::FunctionReturnVoid as i32),
+                     Instruction::I32Const(VOID_VALUE_PLACEHOLDER),
+                     call_logger.clone()]
+            }
+        };
+
+        let mut instrumented = prologue;
+
+        // Iterate over all instructions, using a moving window to check if the
+        // next instruction is `return`.
+        // If so, append the epilogue onto the instrumented body, along with
+        // the current instruction.
+        for (curr, next) in mut_body.code().elements().into_iter().tuple_windows() {
+            instrumented.push(curr.clone());
+            if let Instruction::Return = next {
+                instrumented.append(&mut epilogue.clone());
+            }
+        }
+
+        // Since we iterated over tuple windows but only pushed the first element of
+        // each pair, we missed the last instruction, which is always `end` according
+        // to the spec.
+        // Since `end` implicitly returns, we want to add the epilogue there as well.
+        match instrumented.last() {
+            // Is the end reachable? If not, there will be nothing on the stack,
+            // so `tee_local` will throw an error.
+            Some(Instruction::Unreachable) => {}
+            Some(_) => {
+                instrumented.append(&mut epilogue);
+            }
+            _ => {}
+        };
+
+        // Add the final instruction.
+        instrumented.push(Instruction::End);
+
+        // Update the working copy of the function body with the new instructions.
+        let ref mut insts = mut_body.code_mut().elements_mut();
+        **insts = instrumented;
+    }
 
     pub fn print_functions(&self) {
         for f in self.functions() {
@@ -237,7 +322,6 @@ impl WasmModule {
             .code_section()
             .map_or(&[], CodeSection::bodies)
     }
- 
 }
 
 #[derive(Debug, PartialEq)]
@@ -302,7 +386,7 @@ pub enum SourceSection {
 #[cfg(test)]
 mod test {
     use parity_wasm::elements::*;
-    use super::{WasmModule, WasmFunction};
+    use super::{WasmModule, WasmFunction, EntryKind};
 
     #[test]
     fn list_functions() {
@@ -429,62 +513,102 @@ mod test {
     }
 
     #[test]
-    fn insert_tracing_instructions() {
-        // all exported functions in this .wasm
+    fn add_tracing_instructions() {
         let file = "./tests/function-names.wasm";
-        let mut module = WasmModule::from_file(file).unwrap();
+        let module = WasmModule::from_file(file).unwrap();
         let before_insertion = vec![vec![Instruction::GetLocal(1),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::F64Const(4602678819172646912),
-                                 Instruction::F64Mul,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::I32Const(1),
-                                 Instruction::I32Shl,
-                                 Instruction::End]];
-        
-        let after_insertion = vec![vec![Instruction::GetLocal(1),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::GetLocal(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Add,
-                                 Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::F64Const(4602678819172646912),
-                                 Instruction::F64Mul,
-                                 Instruction::Call(1),
-                                 Instruction::End],
-                            vec![Instruction::Call(0),
-                                 Instruction::GetLocal(0),
-                                 Instruction::I32Const(1),
-                                 Instruction::I32Shl,
-                                 Instruction::Call(1),
-                                 Instruction::End]];
+                                         Instruction::GetLocal(0),
+                                         Instruction::I32Add,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::GetLocal(0),
+                                         Instruction::Call(0),
+                                         Instruction::GetLocal(0),
+                                         Instruction::I32Add,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::F64Const(4602678819172646912),
+                                         Instruction::F64Mul,
+                                         Instruction::End],
+                                    vec![Instruction::GetLocal(0),
+                                         Instruction::I32Const(1),
+                                         Instruction::I32Shl,
+                                         Instruction::End]];
 
         for (i, f) in module.functions().enumerate() {
             for (j, inst) in f.instructions().enumerate() {
                 assert_eq!(*inst, before_insertion[i][j]);
             }
-        }                                 
+        }
 
-        module.add_tracing_instructions(0, 1);
+        // TODO: Clean this up to make it clearer.
+        let mock_log_call: u32 = 999;
+        let after_insertion =
+            vec![vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                      Instruction::I32Const(0),
+                      Instruction::Call(mock_log_call),
 
-        for (i, f) in module.functions().enumerate() {
-            for (j, inst) in f.instructions().enumerate() {
+                      Instruction::GetLocal(1),
+                      Instruction::GetLocal(0),
+                      Instruction::I32Add,
+
+                      Instruction::TeeLocal(0),
+                      Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
+                      Instruction::GetLocal(0),
+                      Instruction::Call(mock_log_call),
+                      Instruction::End],
+
+                 vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                      Instruction::I32Const(1),
+                      Instruction::Call(mock_log_call),
+
+                      Instruction::GetLocal(0),
+                      Instruction::GetLocal(0),
+                      Instruction::Call(0),
+                      Instruction::GetLocal(0),
+                      Instruction::I32Add,
+
+                      Instruction::TeeLocal(0),
+                      Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
+                      Instruction::GetLocal(0),
+                      Instruction::Call(mock_log_call),
+                      Instruction::End],
+
+                 vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                      Instruction::I32Const(2),
+                      Instruction::Call(mock_log_call),
+
+                      Instruction::GetLocal(0),
+                      Instruction::F64Const(4602678819172646912),
+                      Instruction::F64Mul,
+
+                      Instruction::TeeLocal(0),
+                      Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
+                      Instruction::GetLocal(0),
+                      Instruction::Call(mock_log_call),
+                      Instruction::End],
+
+                 vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
+                      Instruction::I32Const(3),
+                      Instruction::Call(mock_log_call),
+
+                      Instruction::GetLocal(0),
+                      Instruction::I32Const(1),
+                      Instruction::I32Shl,
+
+                      Instruction::TeeLocal(0),
+                      Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
+                      Instruction::GetLocal(0),
+                      Instruction::Call(mock_log_call),
+                      Instruction::End]];
+
+        let mut working = CodeSection::with_bodies(module.function_bodies().to_vec());
+        module
+            .add_tracing_instructions(mock_log_call as usize, &mut working)
+            .unwrap();
+
+        for (i, f) in working.bodies().iter().enumerate() {
+            for (j, inst) in f.code().elements().iter().enumerate() {
                 assert_eq!(*inst, after_insertion[i][j]);
             }
         }

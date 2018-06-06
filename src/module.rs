@@ -133,12 +133,6 @@ impl WasmModule {
             return Err(Error::Other("Could not find tracing instructions"));
         }
 
-        for (i, f) in self.function_bodies().iter().enumerate() {
-            if i < 7 {
-                println!("\n{} before\n{:?}", i, f.code());
-            }
-        }
-
         let mut working = CodeSection::with_bodies(self.function_bodies().to_vec());
         self.add_tracing_instructions(logger.unwrap(), &mut working)?;
 
@@ -146,12 +140,6 @@ impl WasmModule {
             *current_section = working;
         } else {
             return Err(Error::Other("Could not replace code section"));
-        }
-
-        for (i, f) in self.function_bodies().iter().enumerate() {
-            if i < 7 {
-                println!("\n{}\n{:?}", i, f.code());
-            }
         }
 
         return Ok(());

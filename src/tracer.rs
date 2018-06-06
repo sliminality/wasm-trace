@@ -4,7 +4,7 @@ pub static LOG_CALL: &str = "__log_call";
 pub static EXPOSE_TRACER: &str = "__expose_tracer";
 pub static EXPOSE_TRACER_LEN: &str = "__expose_tracer_len";
 
-static RING_BUFFER_ENTRIES: usize = 1024;
+static TRACER_LOG_ENTRIES: usize = 1024;
 
 #[repr(i32)]
 #[derive(Debug)]
@@ -20,7 +20,7 @@ pub struct Tracer(RingBuffer<i32>);
 
 impl Tracer {
     pub fn new() -> Self {
-        Tracer(RingBuffer::new(RING_BUFFER_ENTRIES * 2))
+        Tracer(RingBuffer::new(TRACER_LOG_ENTRIES * 2))
     }
 
     pub fn log(&mut self, kind: i32, data: i32) {

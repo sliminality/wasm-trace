@@ -130,16 +130,17 @@ impl WasmModule {
             .map(|(&id, _)| id);
 
         if logger.is_none() {
-            return Err(Error::Other("Could not find tracing instructions"));
+            return Err(Error::Other("Could not find tracing functions in module exports"));
         }
 
         let mut working = CodeSection::with_bodies(self.function_bodies().to_vec());
         self.add_tracing_instructions(logger.unwrap(), &mut working)?;
 
+        // Replace the module code section with the instrumented bodies.
         if let Some(current_section) = self.module.code_section_mut() {
             *current_section = working;
         } else {
-            return Err(Error::Other("Could not replace code section"));
+            return Err(Error::Other("Could not replace code section with instrumented version"));
         }
 
         return Ok(());
@@ -184,21 +185,30 @@ impl WasmModule {
                            return_ty: Option<ValueType>,
                            mut_body: &mut FuncBody) {
         let call_logger = Instruction::Call(logger_id as u32);
+
+        // Record that a function call occurred, and the id of the callee.
         let prologue = vec![Instruction::I32Const(EntryKind::FunctionCall as i32),
                             Instruction::I32Const(id as i32),
                             call_logger.clone()];
 
+        // Record returning from the function.
         let mut epilogue = match return_ty {
+            // If the function has a return type, we need to capture the returned value from
+            // the top of the stack.
             Some(ty) => {
+                // Create a new local to store the return value.
                 let return_local = Local::new(1, ty);
                 let return_local_id: u32 = mut_body.locals().iter().map(|loc| loc.count()).sum();
                 mut_body.locals_mut().push(return_local);
 
+                // Capture the top of the stack into our local and return that.
                 vec![Instruction::TeeLocal(return_local_id),
                      Instruction::I32Const(EntryKind::FunctionReturnValue as i32),
                      Instruction::GetLocal(return_local_id),
                      call_logger.clone()]
             }
+            // If the function has no return value, we simply record that the return
+            // is void, and use a placeholder value for the data.
             None => {
                 vec![Instruction::I32Const(EntryKind::FunctionReturnVoid as i32),
                      Instruction::I32Const(VOID_VALUE_PLACEHOLDER),
@@ -208,6 +218,10 @@ impl WasmModule {
 
         let mut instrumented = prologue;
 
+        // Iterate over all instructions, using a moving window to check if the
+        // next instruction is `return`.
+        // If so, append the epilogue onto the instrumented body, along with
+        // the current instruction.
         for (curr, next) in mut_body.code().elements().into_iter().tuple_windows() {
             instrumented.push(curr.clone());
             if let Instruction::Return = next {
@@ -216,9 +230,12 @@ impl WasmModule {
         }
 
         // Since we iterated over tuple windows but only pushed the first element of
-        // each pair, we need to add Instruction::End to the instrumented body.
-        // First, check whether the End is reachable; if so, add the epilogue there.
+        // each pair, we missed the last instruction, which is always `end` according
+        // to the spec.
+        // Since `end` implicitly returns, we want to add the epilogue there as well.
         match instrumented.last() {
+            // Is the end reachable? If not, there will be nothing on the stack,
+            // so `tee_local` will throw an error.
             Some(Instruction::Unreachable) => {}
             Some(_) => {
                 instrumented.append(&mut epilogue);
@@ -226,8 +243,10 @@ impl WasmModule {
             _ => {}
         };
 
+        // Add the final instruction.
         instrumented.push(Instruction::End);
 
+        // Update the working copy of the function body with the new instructions.
         let ref mut insts = mut_body.code_mut().elements_mut();
         **insts = instrumented;
     }

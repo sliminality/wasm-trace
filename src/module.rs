@@ -23,13 +23,27 @@ pub struct WasmModule {
 impl WasmModule {
     /// Deserializes a `.wasm` file to a module.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
-        let module = deserialize_file(path)?;
+        let module = match deserialize_file(path)?.parse_names() {
+            Ok(parsed_module) => parsed_module,
+            Err((_, unparsed_module)) => unparsed_module,
+        };
+
         let mut result = WasmModule {
             module,
             function_names: HashMap::new(),
         };
 
-        result.function_names = result.exported_function_names();
+        // Try to populate the names map using the names section.
+        if let Some(NameSection::Function(section)) = result.module.names_section() {
+            for (function_index, name) in section.names().iter() {
+                result
+                    .function_names
+                    .insert(function_index as usize, name.to_owned());
+            }
+        } else {
+            // If there's no name section, fall back onto the export names.
+            result.function_names = result.exported_function_names();
+        }
 
         Ok(result)
     }
@@ -127,7 +141,7 @@ impl WasmModule {
 
     /// Instruments a module by adding a prologue and epilogue to each exported function.
     pub fn instrument_module(&mut self) -> Result<(), Error> {
-        let logger = self.function_names
+        let logger = self.exported_function_names()
             .iter()
             .find(|(_, name)| *name == LOG_CALL)
             .map(|(&id, _)| id);
@@ -162,7 +176,7 @@ impl WasmModule {
             .filter_map(|(i, (mut_body, func))| {
                 let id = i + imports_count;
                 // Only instrument exported functions for now.
-                match self.function_names.get(&id) {
+                match self.exported_function_names().get(&id) {
                     None => None,
                     Some(name) if name == EXPOSE_TRACER || name == EXPOSE_TRACER_LEN ||
                                   name == LOG_CALL => None,

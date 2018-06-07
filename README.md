@@ -24,7 +24,7 @@ Goal: P1 functionality by project handin.
   - [ ] (P2) Log returned value if Rust type (via pointer)
 - UI/UX
   - [x] (P0) Display function ids
-  - [ ] (P1) Display formatted names
+  - [x] (P1) Display formatted names
   - [x] (P0) Bootstrap the tracer using macros
   - [ ] (P2) Bootstrap the tracer using `extern crate wasm_trace;` alone
   - [ ] (P2) Allow users to specify ring buffer size
@@ -86,26 +86,26 @@ and evaluate the resulting `output.wasm` in Node. Specifically, we'll invoke `do
 > node ../bin/runWasm.js function-calls.wasm do_stuff 4
 Invoking exported function do_stuff with arguments [ 4 ] ...
 Result of function call: 4
- call function 3
-  |  call function 4
-  |  return 8 from 4
-  |  call function 4
-  |  return 8 from 4
-  |  call function 5
-  |   |  call function 5
-  |   |   |  call function 5
-  |   |   |   |  call function 5
-  |   |   |   |  return 1 from 5
-  |   |   |  return 2 from 5
-  |   |  return 6 from 5
-  |  return 24 from 5
-  |  call function 4
-  |  return 8 from 4
-  |  call function 6
-  |  return -5 from 6
-  |  call function 7
-  |  return from 7
- return 4 from 3
+ call function do_stuff
+  |  call function double
+  |  return 8 from double
+  |  call function double
+  |  return 8 from double
+  |  call function factorial
+  |   |  call function factorial
+  |   |   |  call function factorial
+  |   |   |   |  call function factorial
+  |   |   |   |  return 1 from factorial
+  |   |   |  return 2 from factorial
+  |   |  return 6 from factorial
+  |  return 24 from factorial
+  |  call function double
+  |  return 8 from double
+  |  call function negate
+  |  return -5 from negate
+  |  call function void
+  |  return from void
+ return 4 from do_stuff
 ```
 
 ## Requirements

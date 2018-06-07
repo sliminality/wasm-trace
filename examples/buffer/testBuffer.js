@@ -1,6 +1,7 @@
 // @format
 
-const { default: main, getMemory } = require('../bin/runWasm');
+const { default: main } = require('../js/runWasm');
+const { getMemory } = require('../js/tracer.js');
 const BUFFER_SIZE = 10;
 
 main(process.argv)

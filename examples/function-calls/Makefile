@@ -40,4 +40,4 @@ wat:
 
 # Execute a `.wasm` file in Node.js.
 node:
-	node ../bin/runWasm.js $(EXAMPLE).wasm $(FUNCTION) $(ARGS)
+	node ../js/runWasm.js $(EXAMPLE).wasm $(FUNCTION) $(ARGS)

@@ -36,9 +36,9 @@ wat:
 
 # Execute a `.wasm` file in Node.js.
 node:
-	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION1) $(ARGS)
-	node ../bin/runWasm.js $(FILE).wasm $(FUNCTION2) $(ARGS)
+	node ../js/runWasm.js $(FILE).wasm $(FUNCTION1) $(ARGS)
+	node ../js/runWasm.js $(FILE).wasm $(FUNCTION2) $(ARGS)
 
 output:
-	node ../bin/runWasm.js output.wasm $(FUNCTION1) $(ARGS)
-	node ../bin/runWasm.js output.wasm $(FUNCTION2) $(ARGS)
+	node ../js/runWasm.js output.wasm $(FUNCTION1) $(ARGS)
+	node ../js/runWasm.js output.wasm $(FUNCTION2) $(ARGS)

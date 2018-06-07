@@ -33,4 +33,4 @@ print:
 
 # Execute a `.wasm` file in Node.js.
 eval:
-	node ./node/bin/runWasm.js $(FILE).wasm $(FUNCTION) $(ARGS)
+	node ./node/js/runWasm.js $(FILE).wasm $(FUNCTION) $(ARGS)

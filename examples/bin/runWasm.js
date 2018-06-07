@@ -9,6 +9,7 @@
 
 const fs = require('fs');
 const assert = require('assert');
+const { TextDecoder } = require('util');
 
 assert('WebAssembly' in global, 'WebAssembly global object not detected');
 
@@ -28,14 +29,15 @@ const ENTRY_KIND = {
 // Compile and run a WebAssembly module, given a path.
 function compileAndRun(bytes, func, ...args) {
   return WebAssembly.compile(bytes)
-    .then(
-      module =>
-        new WebAssembly.Instance(module, {
-          memory: new WebAssembly.Memory({ initial: 256 }),
-          table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' }),
-        }),
-    )
-    .then(instance => {
+    .then(module => {
+      const instance = new WebAssembly.Instance(module, {
+        memory: new WebAssembly.Memory({ initial: 256 }),
+        table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' }),
+      });
+      const names = getNames(module);
+      return { instance, names };
+    })
+    .then(({ instance, names }) => {
       const { exports } = instance;
       assert(exports, 'no exports found');
       assert(
@@ -50,7 +52,7 @@ function compileAndRun(bytes, func, ...args) {
         args,
         '...',
       );
-      return { result, exports };
+      return { result, exports, names };
     });
 }
 
@@ -82,26 +84,94 @@ assert.deepStrictEqual(chunk(2, [1, 2, 'a', 'z', true, false, 1]), [
 ]);
 
 // Print the contents of the tracer buffer, if available.
-function readBuffer(exports) {
+function readBuffer(exports, nameMap = new Map()) {
   if (exports[TRACER.EXPOSE_TRACER] && exports[TRACER.EXPOSE_TRACER_LEN]) {
     const tracer = exports[TRACER.EXPOSE_TRACER]();
     const len = exports[TRACER.EXPOSE_TRACER_LEN]();
+
     const callBuffer = getMemory(exports.memory, tracer, len);
     const stack = [];
-
     const indent = () => '  | '.repeat(stack.length);
 
     for (const [kind, data] of chunk(2, callBuffer)) {
       if (kind === ENTRY_KIND.FUNCTION_CALL) {
-        console.log(indent(), 'call function', data);
+        const callee = nameMap.has(data) ? nameMap.get(data) : data;
+        console.log(indent(), 'call function', callee);
         stack.push(data);
       } else {
         const callee = stack.pop();
+        const calleeFormat = nameMap.has(callee) ? nameMap.get(callee) : callee;
         const value = kind === ENTRY_KIND.FUNCTION_RETURN_VALUE ? [data] : [];
-        console.log(indent(), 'return', ...value, 'from', callee);
+        console.log(indent(), 'return', ...value, 'from', calleeFormat);
       }
     }
   }
+}
+
+// TODO: Wrap this in a generator.
+function readVarUint32(view, offset = 0, intsToRead = 1) {
+  const results = [];
+  let bytesRead = 0;
+
+  for (let i = 0; i < intsToRead; i += 1) {
+    let value = 0;
+    let j = 0;
+
+    while (true) {
+      const byte = view.getUint8(offset + bytesRead);
+      const shift = j * 7;
+      value |= (byte & 0x7f) << shift;
+      bytesRead += 1;
+      j += 1;
+
+      // Last byte (in little endian) starts with a 0.
+      if ((byte & 0x80) === 0) {
+        break;
+      }
+    }
+
+    results.push(value);
+  }
+
+  return { results, bytesRead };
+}
+
+function getNames(module) {
+  const nameSections = WebAssembly.Module.customSections(module, 'name');
+  if (nameSections.length === 0) {
+    console.log('No name sections provided');
+    return;
+  }
+  const [names] = nameSections;
+  const data = new DataView(names);
+  const decoder = new TextDecoder('utf-8');
+
+  const PAYLOAD_SIZE_OFFSET = 1;
+  const { results, bytesRead: metadataSize } = readVarUint32(
+    data,
+    PAYLOAD_SIZE_OFFSET,
+    2,
+  );
+  const [payloadLen, entryCount] = results;
+
+  let entryId = 0;
+  let entryOffset = PAYLOAD_SIZE_OFFSET + metadataSize;
+  const nameMap = new Map();
+
+  while (entryId < entryCount) {
+    const { results, bytesRead } = readVarUint32(data, entryOffset, 2);
+    const [namingId, nameSize] = results;
+    assert.equal(namingId, entryId, 'Correctly identified entry id');
+
+    const nameOffset = entryOffset + bytesRead;
+    const name = decoder.decode(new Uint8Array(names, nameOffset, nameSize));
+    nameMap.set(namingId, name);
+
+    entryOffset = nameOffset + nameSize;
+    entryId += 1;
+  }
+
+  return nameMap;
 }
 
 function validateArgs(_, __, wasmFile, funcName, args) {
@@ -126,9 +196,9 @@ if (module.parent) {
 } else {
   // Script is invoked from the terminal, compile and log result.
   main(process.argv)
-    .then(({ result, exports }) => {
+    .then(({ result, exports, names }) => {
       console.log('Result of function call:', result);
-      readBuffer(exports);
+      readBuffer(exports, names);
     })
     .catch(console.error);
 }

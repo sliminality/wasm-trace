@@ -1,3 +1,5 @@
+//! Function call and return tracing capabilities.
+
 use ring_buffer::RingBuffer;
 
 pub static LOG_CALL: &str = "__log_call";
@@ -8,6 +10,7 @@ static TRACER_LOG_ENTRIES: usize = 1024;
 
 #[repr(i32)]
 #[derive(Debug)]
+/// Characterizes the kind of the logged data.
 pub enum EntryKind {
     FunctionCall = 0,
     FunctionReturnVoid = 1,
@@ -19,19 +22,24 @@ pub enum EntryKind {
 pub struct Tracer(RingBuffer<i32>);
 
 impl Tracer {
+    /// Creates a `Tracer` initalized to capture 1024 log events.
     pub fn new() -> Self {
         Tracer(RingBuffer::new(TRACER_LOG_ENTRIES * 2))
     }
 
+    /// Records the kind and associated data (e.g. called function index)
+    /// in the buffer.
     pub fn log(&mut self, kind: i32, data: i32) {
         self.0.enqueue(kind as i32);
         self.0.enqueue(data);
     }
 
+    /// Converts to a raw pointer.
     pub fn as_ptr(&self) -> *const i32 {
         self.0.as_slice().as_ptr()
     }
 
+    /// Returns the length of the buffer.
     pub fn len(&self) -> usize {
         self.0.len()
     }

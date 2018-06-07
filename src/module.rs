@@ -1,4 +1,4 @@
-/// Interfacing with WASM.
+//! WebAssembly module and components.
 
 use std::path::Path;
 use std::fmt;
@@ -14,12 +14,14 @@ use tracer::{EntryKind, EXPOSE_TRACER, EXPOSE_TRACER_LEN, LOG_CALL};
 static VOID_VALUE_PLACEHOLDER: i32 = i32::MAX;
 
 #[derive(Debug)]
+/// Wrapper around the parity-wasm `Module` struct, with convenience functions.
 pub struct WasmModule {
     module: Module,
     function_names: HashMap<usize, String>,
 }
 
 impl WasmModule {
+    /// Deserializes a `.wasm` file to a module.
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Self, Error> {
         let module = deserialize_file(path)?;
         let mut result = WasmModule {
@@ -32,10 +34,12 @@ impl WasmModule {
         Ok(result)
     }
 
+    /// Serializes a module to a file.
     pub fn to_file<P: AsRef<Path>>(path: P, wasm_module: WasmModule) -> Result<(), Error> {
         serialize_to_file(path, wasm_module.module)
     }
 
+    /// Iterates over the module's imports.
     pub fn imports(&self) -> impl Iterator<Item = &ImportEntry> {
         self.module
             .import_section()
@@ -43,12 +47,14 @@ impl WasmModule {
                     |section| Either::Right(section.entries().iter()))
     }
 
-    /// Safe function for counting the number of imported functions.
+    /// Counts number of imported functions.
     /// Use this instead of `self.imports().size_hint()`!
     pub fn imported_functions_count(&self) -> usize {
         self.module.import_count(ImportCountType::Function)
     }
 
+    /// Iterates over the imported functions within the function index space of the module.
+    /// Imported functions do not have bodies.
     pub fn imported_functions(&self) -> impl Iterator<Item = WasmFunction> {
         self.imports()
             .filter_map(move |import| if let External::Function(tyid) = import.external() {
@@ -83,9 +89,7 @@ impl WasmModule {
     }
 
     /// Iterates over the function index space of the module.
-    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/
-    /// wasm-reference-manual/blob/master/WebAssembly.md):
-    ///
+    /// According to the [WebAssembly design docs](https://github.com/sunfishcode/wasm-reference-manual/blob/master/WebAssembly.md):
     /// > The function index space begins with an index for each imported
     /// > function, in the order the imports appear in the Import Section,
     /// > if present, followed by an index for each function in the Function Section,
@@ -121,8 +125,7 @@ impl WasmModule {
         Either::Right(imported_functions.chain(own_functions))
     }
 
-    /// Instrument a .wasm module by adding a prologue and epilogue to each function.
-    /// For now, only add tracing calls to exported functions.
+    /// Instruments a module by adding a prologue and epilogue to each exported function.
     pub fn instrument_module(&mut self) -> Result<(), Error> {
         let logger = self.function_names
             .iter()
@@ -251,6 +254,8 @@ impl WasmModule {
         **insts = instrumented;
     }
 
+    /// Prints the index in the function index space, type signature, and instruction
+    /// list for each function in this module.
     pub fn print_functions(&self) {
         for f in self.functions() {
             println!("{}", f);
@@ -274,10 +279,12 @@ impl WasmModule {
         names
     }
 
+    /// Function name for index of exported function in function index space.
     pub fn get_function_name(&self, id: usize) -> Option<&str> {
         self.function_names.get(&id).map(String::as_str)
     }
 
+    /// Iterates over the type of each function in the function section of the module.
     pub fn function_types(&self) -> impl Iterator<Item = &Type> {
         self.function_type_refs()
             .iter()
@@ -287,36 +294,44 @@ impl WasmModule {
                  })
     }
 
+    /// Counts the functions the in the module's function section 
+    /// (doesn't include imported functions).
     pub fn own_functions_count(&self) -> usize {
         self.module
             .function_section()
             .map_or(0, |sec| sec.entries().len())
     }
 
+    /// Entries in the module's export section.
     pub fn exports(&self) -> &[ExportEntry] {
         self.module
             .export_section()
             .map_or(&[], ExportSection::entries)
     }
 
+    /// Types in the module's type section.
     pub fn types(&self) -> &[Type] {
         self.module
             .type_section()
             .map_or(&[], TypeSection::types)
     }
 
+    /// Type for index in type index space.
     pub fn get_type(&self, tyid: u32) -> Option<&Type> {
         self.module
             .type_section()
             .and_then(|sec| sec.types().get(tyid as usize))
     }
 
+    /// Entries in the module's function section.
+    /// Entries in this section are type indices that represent the type signature of the module's functions.
     fn function_type_refs(&self) -> &[Func] {
         self.module
             .function_section()
             .map_or(&[], FunctionSection::entries)
     }
 
+    /// Bodies of the module's functions from the code section.
     pub fn function_bodies(&self) -> &[FuncBody] {
         self.module
             .code_section()
@@ -325,6 +340,7 @@ impl WasmModule {
 }
 
 #[derive(Debug, PartialEq)]
+/// WebAssembly function.
 pub struct WasmFunction<'a> {
     id: usize,
     ty: &'a Type,
@@ -333,6 +349,7 @@ pub struct WasmFunction<'a> {
     source: SourceSection,
 }
 
+/// Instructions a function body.
 impl<'a> WasmFunction<'a> {
     pub fn instructions(&self) -> impl Iterator<Item = &Instruction> {
         self.body

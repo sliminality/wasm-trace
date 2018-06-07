@@ -1,8 +1,10 @@
 #[macro_use]
 mod macros;
 mod either;
+/// WebAssembly module and components.
 pub mod module;
 mod ring_buffer;
+/// Function call and return tracing capabilities.
 pub mod tracer;
 
 #[allow(unused_imports)]

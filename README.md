@@ -4,32 +4,6 @@
 
 Based on an [idea](https://gist.github.com/fitzgen/34073d61f2c358f2b35038fa263b74a3) by [Nick Fitzgerald](https://github.com/fitzgen) from Mozilla.
 
-## Current functionality
-
-Goal: P1 functionality by project handin.
-
-- Instrument functions
-  - [x] (P0) Instrument exported functions
-  - [ ] (P1) Instrument the whole function section, including standard library functions, *except* for the transitive closure of the functions called by the tracer
-  - [ ] Filter function names by regex
-- Calls
-  - [x] (P0) Log that a call happened
-  - [ ] (P2) Log arguments to calls
-  - [ ] (P3) Capture call frequency
-- Returns
-  - [x] (P0) Log that a return happened
-  - [x] (P1) Log returned value if `i32`
-  - [ ] (P1) Log returned value if wasm-supported type
-    - Instrumentation is done, but need to update JavaScript and tracer to support 64 bits.
-  - [ ] (P2) Log returned value if Rust type (via pointer)
-- UI/UX
-  - [x] (P0) Display function ids
-  - [x] (P1) Display formatted names
-  - [x] (P0) Bootstrap the tracer using macros
-  - [ ] (P2) Bootstrap the tracer using `extern crate wasm_trace;` alone
-  - [ ] (P2) Allow users to specify ring buffer size
-  - [ ] (P3) Display histogram of call frequency
-
 ## Usage
 
 Given the following Rust program:
@@ -77,13 +51,16 @@ pub fn factorial(n: u32) -> u32 {
 }
 ```
 
-We can pass the `.wasm` binary to the program:
+We can compile this program to a `.wasm` binary and pass that binary to our program:
 ```sh
-> cargo run function-calls.wasm
+> cargo build --example function-calls --target=wasm32-unknown-unknown
+> cp target/wasm32-unknown-unknown/debug/examples/function-calls.wasm .
+> cargo run function-calls.wasm  # `cargo run` our `wasm-trace` binary
 ```
-and evaluate the resulting `output.wasm` in Node. Specifically, we'll invoke `do_stuff(4)`:
+
+This will output an instrumented binary called `output.wasm`. We can evaluate this module in Node.js and invoke `do_stuff(4)`:
 ```sh
-> node ../bin/runWasm.js function-calls.wasm do_stuff 4
+> node examples/js/runWasm.js function-calls.wasm do_stuff 4
 Invoking exported function do_stuff with arguments [ 4 ] ...
 Result of function call: 4
  call function do_stuff
@@ -118,6 +95,32 @@ unneeded exports, imports, and functions.
 toolchain for WebAssembly. In particular, we're using the `wasm-dis`
 tool to disassemble a `.wasm` binary into the readable `.wat` S-expression format.
 - [Node.js](https://nodejs.org/) with WebAssembly support.
+
+## Current functionality
+
+Goal: P1 functionality by project handin.
+
+- Instrument functions
+  - [x] (P0) Instrument exported functions
+  - [ ] (P1) Instrument the whole function section, including standard library functions, *except* for the transitive closure of the functions called by the tracer
+  - [ ] Filter function names by regex
+- Calls
+  - [x] (P0) Log that a call happened
+  - [ ] (P2) Log arguments to calls
+  - [ ] (P3) Capture call frequency
+- Returns
+  - [x] (P0) Log that a return happened
+  - [x] (P1) Log returned value if `i32`
+  - [ ] (P1) Log returned value if wasm-supported type
+    - Instrumentation is done, but need to update JavaScript and tracer to support 64 bits.
+  - [ ] (P2) Log returned value if Rust type (via pointer)
+- UI/UX
+  - [x] (P0) Display function ids
+  - [x] (P1) Display formatted names
+  - [x] (P0) Bootstrap the tracer using macros
+  - [ ] (P2) Bootstrap the tracer using `extern crate wasm_trace;` alone
+  - [ ] (P2) Allow users to specify ring buffer size
+  - [ ] (P3) Display histogram of call frequency
 
 ## Team
 

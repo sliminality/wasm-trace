@@ -20,6 +20,7 @@ function getMemory(memory, offset, length = 1) {
 
 // Print the contents of the tracer buffer, if available.
 function readBuffer(exports, nameMap = new Map()) {
+  console.log('\nExecution trace:');
   if (exports[TRACER.EXPOSE_TRACER] && exports[TRACER.EXPOSE_TRACER_LEN]) {
     const tracer = exports[TRACER.EXPOSE_TRACER]();
     const len = exports[TRACER.EXPOSE_TRACER_LEN]();

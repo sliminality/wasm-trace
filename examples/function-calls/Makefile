@@ -11,7 +11,6 @@ ARGS = 4
 # Compile `test.rs` and execute in Node.
 all:
 	make build
-	cp $(TARGET_DIR)/$(EXAMPLE).wasm .
 	make gc
 	make wat
 	make node
@@ -25,6 +24,7 @@ clean:
 build:
 	cargo build --example $(EXAMPLE) \
 		--target=wasm32-unknown-unknown
+	cp $(TARGET_DIR)/$(EXAMPLE).wasm .
 
 # Slim down `.wasm` files.
 # Requires [wasm-gc](https://github.com/alexcrichton/wasm-gc).

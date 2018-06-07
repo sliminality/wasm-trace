@@ -1,4 +1,4 @@
-/// Interfacing with WASM.
+//! WebAssembly module and components.
 
 use std::path::Path;
 use std::fmt;
@@ -14,7 +14,7 @@ use tracer::{EntryKind, EXPOSE_TRACER, EXPOSE_TRACER_LEN, LOG_CALL};
 static VOID_VALUE_PLACEHOLDER: i32 = i32::MAX;
 
 #[derive(Debug)]
-/// WebAssembly module
+/// Wrapper around the parity-wasm `Module` struct, with convenience functions.
 pub struct WasmModule {
     module: Module,
     function_names: HashMap<usize, String>,
@@ -53,8 +53,8 @@ impl WasmModule {
         self.module.import_count(ImportCountType::Function)
     }
 
-    /// Iterates over the imports within the function index space of the module.
-    /// Imports will always have `None` for their `body`.
+    /// Iterates over the imported functions within the function index space of the module.
+    /// Imported functions do not have bodies.
     pub fn imported_functions(&self) -> impl Iterator<Item = WasmFunction> {
         self.imports()
             .filter_map(move |import| if let External::Function(tyid) = import.external() {
@@ -284,7 +284,7 @@ impl WasmModule {
         self.function_names.get(&id).map(String::as_str)
     }
 
-    /// Iterates over the type of each function in the module.
+    /// Iterates over the type of each function in the function section of the module.
     pub fn function_types(&self) -> impl Iterator<Item = &Type> {
         self.function_type_refs()
             .iter()
@@ -340,7 +340,7 @@ impl WasmModule {
 }
 
 #[derive(Debug, PartialEq)]
-/// WebAssembly function
+/// WebAssembly function.
 pub struct WasmFunction<'a> {
     id: usize,
     ty: &'a Type,

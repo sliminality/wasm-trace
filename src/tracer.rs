@@ -1,3 +1,5 @@
+//! Function call and return tracing capabilities.
+
 use ring_buffer::RingBuffer;
 
 pub static LOG_CALL: &str = "__log_call";

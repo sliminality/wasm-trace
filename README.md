@@ -85,6 +85,8 @@ Result of function call: 4
  return 4 from do_stuff
 ```
 
+You can preview the [changes to the disassembly](https://gist.github.com/sarahlim/5ebfb479001a7f7c86db5c747cfff51c/revisions<Paste>).
+
 ## Requirements
 
 The following programs must be installed to run the tests in `tests/`:
@@ -95,32 +97,6 @@ unneeded exports, imports, and functions.
 toolchain for WebAssembly. In particular, we're using the `wasm-dis`
 tool to disassemble a `.wasm` binary into the readable `.wat` S-expression format.
 - [Node.js](https://nodejs.org/) with WebAssembly support.
-
-## Current functionality
-
-Goal: P1 functionality by project handin.
-
-- Instrument functions
-  - [x] (P0) Instrument exported functions
-  - [ ] (P1) Instrument the whole function section, including standard library functions, *except* for the transitive closure of the functions called by the tracer
-  - [ ] Filter function names by regex
-- Calls
-  - [x] (P0) Log that a call happened
-  - [ ] (P2) Log arguments to calls
-  - [ ] (P3) Capture call frequency
-- Returns
-  - [x] (P0) Log that a return happened
-  - [x] (P1) Log returned value if `i32`
-  - [ ] (P1) Log returned value if wasm-supported type
-    - Instrumentation is done, but need to update JavaScript and tracer to support 64 bits.
-  - [ ] (P2) Log returned value if Rust type (via pointer)
-- UI/UX
-  - [x] (P0) Display function ids
-  - [x] (P1) Display formatted names
-  - [x] (P0) Bootstrap the tracer using macros
-  - [ ] (P2) Bootstrap the tracer using `extern crate wasm_trace;` alone
-  - [ ] (P2) Allow users to specify ring buffer size
-  - [ ] (P3) Display histogram of call frequency
 
 ## Team
 

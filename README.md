@@ -85,7 +85,7 @@ Result of function call: 4
  return 4 from do_stuff
 ```
 
-You can preview the [changes to the disassembly](https://gist.github.com/sarahlim/5ebfb479001a7f7c86db5c747cfff51c/revisions<Paste>).
+You can preview the [changes to the disassembly](https://gist.github.com/sarahlim/5ebfb479001a7f7c86db5c747cfff51c/revisions).
 
 ## Requirements
 

@@ -11,7 +11,6 @@ ARGS = 4
 # Compile `test.rs` and execute in Node.
 all:
 	make build
-	make gc
 	make wat
 	make node
 	cargo run $(EXAMPLE).wasm

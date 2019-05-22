@@ -89,7 +89,14 @@ You can preview the [changes to the disassembly](https://gist.github.com/sarahli
 
 ## Requirements
 
-The following programs must be installed to run the tests in `tests/`:
+Install the WebAssembly toolchain:
+
+```sh
+rustup update
+rustup target add wasm32-unknown-unknown --toolchain nightly
+```
+
+In addition, the following binaries must be installed to run the tests in `tests/`:
 
 - [wasm-gc](https://github.com/alexcrichton/wasm-gc), which removes
 unneeded exports, imports, and functions.
